@@ -3,6 +3,52 @@
 <p align="center">
   <img src="icons/icon-512.png" alt="Paperless Uploader Icon" width="256" height="256">
 </p>
+## Screenshots
+
+<div align="center">
+  <!-- First Row -->
+  <table>
+    <tr>
+      <td align="center" valign="top">
+        <h3>Settings Interface</h3>
+        <img src="assets/settings_ui.png" alt="Settings UI" width="400">
+      </td>
+      <td align="center" valign="top">
+        <h3>Advanced Upload Dialog</h3>
+        <img src="assets/advanced_upload_dialog.png" alt="Advanced Upload Dialog" width="400">
+      </td>
+    </tr>
+  </table>
+  
+  <!-- Second Row -->
+  <table>
+    <tr>
+      <td align="center" valign="top">
+        <h3>Popup Interface</h3>
+        <img src="assets/popup_ui.png" alt="Popup UI" width="300">
+      </td>
+      <td align="center" valign="top">
+        <h3>Add Correspondent</h3>
+        <img src="assets/add_correspondent.png" alt="Add Correspondent" width="300">
+      </td>
+      <td align="center" valign="top">
+        <h3>Context Menu Integration</h3>
+        <img src="assets/context_menu.png" alt="Context Menu" width="300">
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
+## Usage
+
+1. Open an email with a PDF attachment.
+2. Click the **Paperless Uploader** icon in the Thunderbird toolbar.
+3. Configure your paperless-ngx server URL and API key in the add-on's options (first use only).
+4. Right click the message and select the upload option.
+5. Receive a notification when the upload is complete.
+
 
 ## Overview
 
