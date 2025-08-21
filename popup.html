@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 350px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .header h3 {
+      margin: 0;
+      color: #2c3e50;
+      font-size: 18px;
+    }
+
+    .status-section {
+      margin-bottom: 20px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 4px;
+      background: #f8f9fa;
+    }
+
+    .status-icon {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+
+    .status-configured {
+      background-color: #28a745;
+    }
+
+    .status-not-configured {
+      background-color: #dc3545;
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+
+    .action-btn:hover {
+      background: #0056b3;
+    }
+
+    .action-btn:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+
+    .secondary-btn {
+      background: #6c757d;
+    }
+
+    .secondary-btn:hover {
+      background: #545b62;
+    }
+
+    .info-text {
+      font-size: 12px;
+      color: #6c757d;
+      margin-top: 15px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      border-left: 3px solid #007bff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h3>
+      <img src="icons/icon-64.png" alt="Paperless PDF Uploader"
+        style="height: 1em; width: 1em; vertical-align: middle; margin-right: 8px;">
+      Paperless PDF Uploader
+    </h3>
+  </div>
+
+  <div class="status-section">
+    <div class="status-item">
+      <div class="status-icon" id="url-status"></div>
+      <span>Paperless-ngx URL</span>
+    </div>
+    <div class="status-item">
+      <div class="status-icon" id="token-status"></div>
+      <span>API Token</span>
+    </div>
+  </div>
+
+  <button class="action-btn" id="test-connection">Test Connection</button>
+  <button class="action-btn secondary-btn" id="open-options">Configure Settings</button>
+
+  <div class="info-text">
+    <strong>How to use:</strong><br>
+    1. Configure your Paperless-ngx settings<br>
+    2. Right-click on emails with PDF attachments<br>
+    3. Select "Upload PDF to Paperless-ngx"
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
