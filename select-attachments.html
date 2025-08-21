@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Select Attachments to Upload</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f8f9fa;
+      min-width: 400px;
+      max-width: 600px;
+    }
+
+    .container {
+      background: white;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #007bff;
+    }
+
+    .header h2 {
+      margin: 0;
+      color: #007bff;
+    }
+
+    .email-info {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .email-info strong {
+      color: #495057;
+    }
+
+    .attachment-list {
+      margin: 20px 0;
+    }
+
+    .attachment-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      background: white;
+    }
+
+    .attachment-item:hover {
+      background: #f8f9fa;
+    }
+
+    .attachment-checkbox {
+      margin-right: 12px;
+      width: 16px;
+      height: 16px;
+    }
+
+    .attachment-info {
+      flex: 1;
+    }
+
+    .attachment-name {
+      font-weight: 600;
+      color: #495057;
+    }
+
+    .attachment-size {
+      font-size: 12px;
+      color: #6c757d;
+      margin-top: 2px;
+    }
+
+    .controls {
+      margin: 15px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .btn-link {
+      background: none;
+      border: none;
+      color: #007bff;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 12px;
+    }
+
+    .btn-link:hover {
+      color: #0056b3;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 25px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #007bff;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #545b62;
+    }
+
+    .btn:disabled {
+      background: #e9ecef;
+      color: #6c757d;
+      cursor: not-allowed;
+    }
+
+    .selected-count {
+      text-align: center;
+      margin: 15px 0;
+      color: #495057;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>📎 Select Attachments to Upload</h2>
+    </div>
+
+    <div class="email-info">
+      <div><strong>From:</strong> <span id="emailFrom"></span></div>
+      <div><strong>Subject:</strong> <span id="emailSubject"></span></div>
+      <div><strong>Date:</strong> <span id="emailDate"></span></div>
+    </div>
+
+    <div class="attachment-list" id="attachmentList">
+      <!-- Attachments will be populated here -->
+    </div>
+
+    <div class="controls">
+      <button class="btn-link" id="selectAllBtn">Select All</button>
+      <button class="btn-link" id="selectNoneBtn">Select None</button>
+    </div>
+
+    <div class="selected-count" id="selectedCount">
+      0 attachments selected
+    </div>
+
+    <div class="button-group">
+      <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
+        📄 Quick Upload Selected
+      </button>
+    </div>
+  </div>
+
+  <script src="select-attachments.js"></script>
+</body>
+</html>

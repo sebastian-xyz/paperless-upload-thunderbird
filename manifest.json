@@ -39,7 +39,8 @@
         "icons/icon-256.png",
         "upload-dialog.html",
         "create-correspondent.html",
-        "create-document-type.html"
+        "create-document-type.html",
+        "select-attachments.html"
       ],
       "matches": [
         "<all_urls>"

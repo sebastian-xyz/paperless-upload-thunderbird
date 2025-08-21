@@ -116,13 +116,51 @@ async function processQuickPdfUpload(message) {
       return;
     }
 
-    // Process each PDF attachment with minimal metadata
-    for (const attachment of pdfAttachments) {
-      await uploadPdfToPaperless(message, attachment, { mode: 'quick' });
+    // If there's only one attachment, upload directly
+    if (pdfAttachments.length === 1) {
+      await uploadPdfToPaperless(message, pdfAttachments[0], { mode: 'quick' });
+      return;
     }
+
+    // If there are multiple attachments, show selection dialog
+    await openAttachmentSelectionDialog(message, pdfAttachments);
+
   } catch (error) {
     console.error("Error processing PDF attachments:", error);
     showNotification(`Error processing attachments: ${error.message}`, "error");
+  }
+}
+
+async function openAttachmentSelectionDialog(message, pdfAttachments) {
+  try {
+    // Store data for the dialog to access
+    await browser.storage.local.set({
+      quickUploadData: {
+        message: {
+          id: message.id,
+          subject: message.subject,
+          author: message.author,
+          date: message.date
+        },
+        attachments: pdfAttachments.map(att => ({
+          name: att.name,
+          partName: att.partName,
+          size: att.size
+        }))
+      }
+    });
+
+    // Open the selection dialog
+    const dialogUrl = browser.runtime.getURL("select-attachments.html");
+    browser.windows.create({
+      url: dialogUrl,
+      type: "popup",
+      width: 500,
+      height: 600
+    });
+  } catch (error) {
+    console.error("Error opening attachment selection dialog:", error);
+    showNotification("Error opening attachment selection dialog", "error");
   }
 }
 
@@ -244,6 +282,50 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 
 // Handle messages from the upload dialog
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.action === "quickUploadSelected") {
+    try {
+      const { messageData, selectedAttachments } = message;
+      
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Upload each selected attachment
+      for (const attachment of selectedAttachments) {
+        try {
+          const result = await uploadPdfToPaperless(
+            messageData,
+            attachment,
+            { mode: 'quick' }
+          );
+          
+          if (result.success) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(`Error uploading ${attachment.name}:`, error);
+        }
+      }
+
+      // Show summary notification
+      if (successCount > 0 && errorCount === 0) {
+        showNotification(`✅ Successfully uploaded ${successCount} document(s) to Paperless-ngx`, "success");
+      } else if (successCount > 0) {
+        showNotification(`⚠️ Uploaded ${successCount} document(s), ${errorCount} failed`, "info");
+      } else {
+        showNotification(`❌ Failed to upload all documents`, "error");
+      }
+
+      sendResponse({ success: true, successCount, errorCount });
+    } catch (error) {
+      console.error("Error in quickUploadSelected:", error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true; // Keep the message channel open for async response
+  }
+
   if (message.action === "uploadWithOptions") {
     try {
       const { messageData, attachmentData, uploadOptions } = message;
