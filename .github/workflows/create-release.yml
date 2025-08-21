@@ -1,0 +1,105 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - "v*" # Triggers on version tags like v1.0.0, v1.2.3, etc.
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Update manifest version
+        run: |
+          VERSION_NUMBER=$(echo "${{ steps.get_version.outputs.VERSION }}" | sed 's/^v//')
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" manifest.json
+          echo "Updated manifest.json version to $VERSION_NUMBER"
+
+      - name: Create XPI package
+        run: |
+          # Create the XPI file (which is just a ZIP with .xpi extension)
+          zip -r paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi \
+            manifest.json \
+            background.js \
+            popup.html \
+            popup.js \
+            options.html \
+            options.js \
+            upload-dialog.html \
+            upload-dialog.js \
+            create-correspondent.html \
+            create-correspondent.js \
+            create-document-type.html \
+            create-document-type.js \
+            icons/ \
+            -x "*.git*" "*.github*" "README.md" "LICENSE" "assets/"
+
+          # Verify the XPI was created
+          ls -la *.xpi
+
+      - name: Generate Release Notes
+        id: generate_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## What's New in ${{ steps.get_version.outputs.VERSION }}
+
+          ### 🚀 Features
+          - Upload PDF attachments directly to Paperless-ngx from Thunderbird
+          - Create new correspondents and document types on-the-fly
+          - Configurable settings for Paperless-ngx server connection
+          - Context menu integration for easy access
+          - Automatic document metadata extraction from emails
+
+          ### 📥 Installation
+          1. Download the `paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi` file below (for Firefox: right-click and select download)
+          2. In Thunderbird, go to **Add-ons and Themes** > **Extensions** > **Install Add-on From File...**
+          3. Select the downloaded `.xpi` file and follow the prompts
+          4. Configure your Paperless-ngx server URL and API key in the extension preferences
+
+          ### 🔧 Requirements
+          - Thunderbird 128.0 or later
+          - Paperless-ngx server with API access
+          - Valid API token for your Paperless-ngx instance
+          EOF
+
+          echo "Generated release notes"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          release_name: Paperless Uploader ${{ steps.get_version.outputs.VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+
+      - name: Upload XPI to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi
+          asset_name: paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi
+          asset_content_type: application/x-xpinstall
+
+      - name: Upload Source Code
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi
+          asset_name: paperless-uploader-${{ steps.get_version.outputs.VERSION }}-source.zip
+          asset_content_type: application/zip
