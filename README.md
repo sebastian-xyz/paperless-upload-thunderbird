@@ -3,6 +3,7 @@
 <p align="center">
   <img src="icons/icon-512.png" alt="Paperless Uploader Icon" width="256" height="256">
 </p>
+
 ## Screenshots
 
 <div align="center">
