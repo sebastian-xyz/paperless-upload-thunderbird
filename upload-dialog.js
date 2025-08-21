@@ -7,7 +7,152 @@ document.addEventListener('DOMContentLoaded', async function () {
   await loadUploadData();
   setupEventListeners();
   await loadPaperlessData();
+  setupPlusButtons();
 });
+// Add event listeners for plus buttons to create new correspondent/document type
+function setupPlusButtons() {
+  const addCorrespondentBtn = document.getElementById('addCorrespondentBtn');
+  if (addCorrespondentBtn) {
+    addCorrespondentBtn.addEventListener('click', async () => {
+      await createNewCorrespondent();
+    });
+  }
+  const addDocumentTypeBtn = document.getElementById('addDocumentTypeBtn');
+  if (addDocumentTypeBtn) {
+    addDocumentTypeBtn.addEventListener('click', async () => {
+      await createNewDocumentType();
+    });
+  }
+
+  // Listen for messages from popup windows
+  window.addEventListener('message', handlePopupMessage);
+}
+
+async function createNewCorrespondent() {
+  try {
+    const popup = await browser.windows.create({
+      url: browser.runtime.getURL('create-correspondent.html'),
+      type: 'popup',
+      width: 600,
+      height: 500
+    });
+  } catch (error) {
+    console.error('Error opening correspondent creation window:', error);
+  }
+}
+
+async function createNewDocumentType() {
+  try {
+    const popup = await browser.windows.create({
+      url: browser.runtime.getURL('create-document-type.html'),
+      type: 'popup',
+      width: 600,
+      height: 500,
+    });
+  } catch (error) {
+    console.error('Error opening document type creation window:', error);
+  }
+}
+
+function handlePopupMessage(event) {
+  if (event.data.action === 'correspondentCreated' && event.data.success) {
+    // Repopulate correspondents and select the new one
+    repopulateCorrespondents().then(() => {
+      if (event.data.correspondent) {
+        const select = document.getElementById('correspondent');
+        select.value = event.data.correspondent.id;
+        showSuccess(`Correspondent "${event.data.correspondent.name}" created successfully!`);
+      }
+    });
+  } else if (event.data.action === 'documentTypeCreated' && event.data.success) {
+    // Repopulate document types and select the new one
+    repopulateDocumentTypes().then(() => {
+      if (event.data.documentType) {
+        const select = document.getElementById('documentType');
+        select.value = event.data.documentType.id;
+        showSuccess(`Document type "${event.data.documentType.name}" created successfully!`);
+      }
+    });
+  }
+}
+
+async function repopulateCorrespondents() {
+  try {
+    const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+    if (!settings.paperlessUrl || !settings.paperlessToken) return;
+
+    const response = await fetch(`${settings.paperlessUrl}/api/correspondents/`, {
+      headers: {
+        'Authorization': `Token ${settings.paperlessToken}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const correspondents = data.results.map(c => ({ id: c.id, name: c.name }));
+
+      const select = document.getElementById('correspondent');
+      const currentValue = select.value;
+
+      // Clear existing options except the first one
+      select.innerHTML = '<option value="">Select correspondent...</option>';
+
+      // Add all correspondents
+      correspondents.forEach(correspondent => {
+        const option = document.createElement('option');
+        option.value = correspondent.id;
+        option.textContent = correspondent.name;
+        select.appendChild(option);
+      });
+
+      // Restore selection if it still exists
+      if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+        select.value = currentValue;
+      }
+    }
+  } catch (error) {
+    console.error('Error repopulating correspondents:', error);
+  }
+}
+
+async function repopulateDocumentTypes() {
+  try {
+    const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+    if (!settings.paperlessUrl || !settings.paperlessToken) return;
+
+    const response = await fetch(`${settings.paperlessUrl}/api/document_types/`, {
+      headers: {
+        'Authorization': `Token ${settings.paperlessToken}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const documentTypes = data.results.map(d => ({ id: d.id, name: d.name }));
+
+      const select = document.getElementById('documentType');
+      const currentValue = select.value;
+
+      // Clear existing options except the first one
+      select.innerHTML = '<option value="">Select document type...</option>';
+
+      // Add all document types
+      documentTypes.forEach(docType => {
+        const option = document.createElement('option');
+        option.value = docType.id;
+        option.textContent = docType.name;
+        select.appendChild(option);
+      });
+
+      // Restore selection if it still exists
+      if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+        select.value = currentValue;
+      }
+    }
+  } catch (error) {
+    console.error('Error repopulating document types:', error);
+  }
+}
 
 async function loadUploadData() {
   try {

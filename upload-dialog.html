@@ -257,19 +257,29 @@
           <div class="help-text">This will be the title in Paperless-ngx</div>
         </div>
 
+
         <div class="form-group">
           <label for="correspondent">Correspondent</label>
-          <select id="correspondent" name="correspondent">
-            <option value="">Select correspondent...</option>
-          </select>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <select id="correspondent" name="correspondent" style="flex:1;">
+              <option value="">Select correspondent...</option>
+            </select>
+            <button type="button" id="addCorrespondentBtn" title="Add new correspondent"
+              style="padding: 6px 10px; font-size: 18px; border-radius: 50%; border: none; background: #e7f3ff; color: #007bff; cursor: pointer;">+</button>
+          </div>
           <div class="help-text">Who sent this document</div>
         </div>
 
+
         <div class="form-group">
           <label for="documentType">Document Type</label>
-          <select id="documentType" name="document_type">
-            <option value="">Select document type...</option>
-          </select>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <select id="documentType" name="document_type" style="flex:1;">
+              <option value="">Select document type...</option>
+            </select>
+            <button type="button" id="addDocumentTypeBtn" title="Add new document type"
+              style="padding: 6px 10px; font-size: 18px; border-radius: 50%; border: none; background: #e7f3ff; color: #007bff; cursor: pointer;">+</button>
+          </div>
           <div class="help-text">Category of this document</div>
         </div>
 
@@ -298,7 +308,17 @@
         <div class="button-group">
           <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
           <button type="submit" class="btn btn-primary" id="uploadBtn">
-            📄 Upload to Paperless-ngx
+            <!-- <img src="icons/icon-64.png" alt="Paperless PDF Uploader"
+              style="height: 1em; width: 1em; vertical-align: middle; margin-right: 8px;">
+            Upload to Paperless-ngx -->
+            <div style="display: flex; align-items: center; justify-content: center;">
+              <img src="icons/icon-64.png" alt="Paperless PDF Uploader"
+                style="height: 2em; width: 2em; margin-right: 20px;">
+              <div>
+                <div>Upload to</div>
+                <div>Paperless-ngx</div>
+              </div>
+            </div>
           </button>
         </div>
       </form>

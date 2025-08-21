@@ -9,11 +9,11 @@ browser.runtime.onInstalled.addListener(() => {
   // Quick upload option
   browser.menus.create({
     id: "quick-upload-pdf-paperless",
-    title: "📄 Quick Upload to Paperless-ngx",
+    title: "Quick Upload to Paperless-ngx",
     contexts: ["message_list"],
     icons: {
-      "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
+      "16": "icons/icon-16.png",
       "64": "icons/icon-64.png",
       "128": "icons/icon-128.png"
     }
@@ -22,11 +22,11 @@ browser.runtime.onInstalled.addListener(() => {
   // Advanced upload option with dialog
   browser.menus.create({
     id: "advanced-upload-pdf-paperless",
-    title: "📄 Upload to Paperless-ngx (with options)...",
+    title: "Upload to Paperless-ngx (with options)...",
     contexts: ["message_list"],
     icons: {
-      "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
+      "16": "icons/icon-16.png",
       "64": "icons/icon-64.png",
       "128": "icons/icon-128.png"
     }
@@ -152,7 +152,7 @@ async function openAdvancedUploadDialog(message, pdfAttachments) {
     browser.windows.create({
       url: dialogUrl,
       type: "popup",
-      width: 500,
+      width: 550,
       height: 700
     });
   } catch (error) {

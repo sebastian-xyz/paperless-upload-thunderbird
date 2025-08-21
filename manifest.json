@@ -36,12 +36,12 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/icon-128.png",
-        "upload-dialog.html"
+        "icons/icon-256.png",
+        "upload-dialog.html",
+        "create-correspondent.html",
+        "create-document-type.html"
       ],
-      "matches": [
-        "*://*/*"
-      ]
+      "matches": ["<all_urls>"]
     }
   ],
   "icons": {
