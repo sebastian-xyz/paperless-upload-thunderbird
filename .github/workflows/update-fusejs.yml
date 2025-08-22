@@ -1,0 +1,82 @@
+name: Build after Dependabot updates
+
+on:
+  pull_request:
+    # Trigger only on Dependabot PRs
+    branches: [ main ]
+
+jobs:
+  # Check if this is a Dependabot PR
+  check-dependabot:
+    runs-on: ubuntu-latest
+    outputs:
+      is-dependabot: ${{ steps.check.outputs.result }}
+    steps:
+      - name: Check if Dependabot PR
+        id: check
+        run: |
+          if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
+            echo "result=true" >> $GITHUB_OUTPUT
+          else
+            echo "result=false" >> $GITHUB_OUTPUT
+          fi
+
+  check-and-update:
+    needs: check-dependabot
+    if: needs.check-dependabot.outputs.is-dependabot == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Copy fuse.min.js
+        run: cp node_modules/fuse.js/dist/fuse.min.js public/
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: 'npm' 
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Copy fuse.min.js
+        run: cp node_modules/fuse.js/dist/fuse.min.js .
+      
+      - name: Check for changes in fuse.min.js
+        id: check-changes
+        run: |
+          git add fuse.min.js
+          if git diff --cached --quiet; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes in fuse.min.js"
+          else
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in fuse.min.js"
+            git diff --cached --name-only
+          fi
+      
+      - name: Commit updated lib files
+        if: steps.check-changes.outputs.changes == 'true' && github.event_name == 'pull_request'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add lib/
+          git commit -m "build: update bundled dependencies after package updates
+
+          - Updated fuse.min.js from node_modules
+          - Triggered by Dependabot dependency update"
+      
+      - name: Push changes to PR branch
+        if: steps.check-changes.outputs.changes == 'true' && github.event_name == 'pull_request'
+        run: |
+          git push origin HEAD:${{ github.head_ref }}
