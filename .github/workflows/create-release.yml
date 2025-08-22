@@ -42,8 +42,9 @@ jobs:
             create-correspondent.js \
             create-document-type.html \
             create-document-type.js \
+            fuse.min.js \
             icons/ \
-            -x "*.git*" "*.github*" "README.md" "LICENSE" "assets/"
+            -x "*.git*" "*.github*" "README.md" "LICENSE" "assets/" "package.json"
 
           # Verify the XPI was created
           ls -la *.xpi
