@@ -228,6 +228,64 @@
       color: #6c757d;
       margin-top: 4px;
     }
+
+    .tag-suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+      max-height: 200px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .suggestion-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item.selected {
+      background-color: #e3f2fd;
+    }
+
+    .suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .suggestion-item mark {
+      background-color: #58b25a;
+      padding: 0;
+      font-weight: bold;
+    }
+
+    .tag-suggestion-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #f8f9fa;
+      font-size: 14px;
+    }
+
+    .tag-suggestion-item:hover,
+    .tag-suggestion-item.highlighted {
+      background-color: #f8f9fa;
+    }
+
+    .tag-suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .form-group {
+      position: relative;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 
@@ -286,9 +344,12 @@
         <div class="form-group">
           <label for="tags">Tags</label>
           <div class="tags-input" id="tagsInput">
-            <input type="text" class="tag-input" placeholder="Type to add tags...">
+            <input type="text" class="tag-input" placeholder="Type to search tags..." autocomplete="off">
           </div>
-          <div class="help-text">Press Enter to add tags, click × to remove</div>
+          <div class="tag-suggestions" id="tagSuggestions" style="display: none;">
+            <!-- Tag suggestions will be populated here -->
+          </div>
+          <div class="help-text">Press Enter to add tags, click × to remove, or select from suggestions</div>
         </div>
 
         <div class="form-group">
@@ -325,6 +386,7 @@
     </div>
   </div>
 
+  <script src="fuse.min.js"></script>
   <script src="upload-dialog.js"></script>
 </body>
 
