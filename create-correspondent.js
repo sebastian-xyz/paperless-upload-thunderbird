@@ -107,5 +107,8 @@ function showSuccess(message) {
 }
 
 function clearMessages() {
-  document.getElementById('messageArea').innerHTML = '';
+  const messageArea = document.getElementById('messageArea');
+  while (messageArea.firstChild) {
+    messageArea.removeChild(messageArea.firstChild);
+  }
 }

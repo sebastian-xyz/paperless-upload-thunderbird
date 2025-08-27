@@ -96,7 +96,9 @@ async function repopulateCorrespondents() {
       const currentValue = select.value;
 
       // Clear existing options except the first one
-      select.innerHTML = '<option value="">Select correspondent...</option>';
+      while (select.children.length > 1) {
+        select.removeChild(select.lastChild);
+      }
 
       // Add all correspondents
       correspondents.forEach(correspondent => {
@@ -135,7 +137,9 @@ async function repopulateDocumentTypes() {
       const currentValue = select.value;
 
       // Clear existing options except the first one
-      select.innerHTML = '<option value="">Select document type...</option>';
+      while (select.children.length > 1) {
+        select.removeChild(select.lastChild);
+      }
 
       // Add all document types
       documentTypes.forEach(docType => {
@@ -442,11 +446,20 @@ function showSuggestions(tags, query) {
   tagsToShow.forEach((tag, index) => {
     const suggestionItem = document.createElement('div');
     suggestionItem.className = 'suggestion-item';
-    suggestionItem.textContent = tag.name;
 
-    // Highlight matching text
+    // Create text with highlighted matching text safely
     const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-    suggestionItem.innerHTML = tag.name.replace(regex, '<mark>$1</mark>');
+    const parts = tag.name.split(regex);
+
+    parts.forEach(part => {
+      if (part.toLowerCase() === query.toLowerCase()) {
+        const mark = document.createElement('mark');
+        mark.textContent = part;
+        suggestionItem.appendChild(mark);
+      } else {
+        suggestionItem.appendChild(document.createTextNode(part));
+      }
+    });
 
     suggestionItem.addEventListener('click', () => {
       addTag(tag.name);
@@ -464,7 +477,9 @@ function showSuggestions(tags, query) {
 
 function hideSuggestions() {
   const suggestionsContainer = document.getElementById('tagSuggestions');
-  suggestionsContainer.innerHTML = '';
+  while (suggestionsContainer.firstChild) {
+    suggestionsContainer.removeChild(suggestionsContainer.firstChild);
+  }
   suggestionsContainer.style.display = 'none';
   selectedSuggestionIndex = -1;
 }
@@ -589,7 +604,10 @@ function showSuccess(message) {
 }
 
 function clearMessages() {
-  document.getElementById('messageArea').innerHTML = '';
+  const messageArea = document.getElementById('messageArea');
+  while (messageArea.firstChild) {
+    messageArea.removeChild(messageArea.firstChild);
+  }
 }
 
 // Make removeTag available globally for the tag elements
