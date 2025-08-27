@@ -42,14 +42,27 @@ function populateAttachmentList() {
     const item = document.createElement('div');
     item.className = 'attachment-item';
 
-    item.innerHTML = `
-      <input type="checkbox" class="attachment-checkbox" id="attachment-${index}" data-index="${index}">
-      <div class="attachment-info">
-        <div class="attachment-name">📄 ${attachment.name}</div>
-        <div class="attachment-size">${formatFileSize(attachment.size)}</div>
-      </div>
-    `;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'attachment-checkbox';
+    checkbox.id = `attachment-${index}`;
+    checkbox.dataset.index = index;
 
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'attachment-info';
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'attachment-name';
+    nameDiv.textContent = `📄 ${attachment.name}`;
+
+    const sizeDiv = document.createElement('div');
+    sizeDiv.className = 'attachment-size';
+    sizeDiv.textContent = formatFileSize(attachment.size);
+
+    infoDiv.appendChild(nameDiv);
+    infoDiv.appendChild(sizeDiv);
+    item.appendChild(checkbox);
+    item.appendChild(infoDiv);
     listContainer.appendChild(item);
   });
 }

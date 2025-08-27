@@ -33,20 +33,6 @@
     "page": "options.html",
     "open_in_tab": false
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "icons/icon-256.png",
-        "upload-dialog.html",
-        "create-correspondent.html",
-        "create-document-type.html",
-        "select-attachments.html"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
   "icons": {
     "128": "icons/icon-128.png",
     "16": "icons/icon-16.png",
