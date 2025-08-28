@@ -524,50 +524,58 @@ async function handleUpload(event) {
 
     // Collect form data
     const formData = new FormData(event.target);
-    const uploadOptions = {
-      title: formData.get('title'),
-      correspondent: formData.get('correspondent') || undefined,
-      document_type: formData.get('document_type') || undefined,
-      created: formData.get('created') || undefined,
-      source: formData.get('source') || undefined,
-      tags: selectedTags
-    };
 
-    // Upload each attachment
-    let successCount = 0;
-    let errorCount = 0;
+    // Convert correspondent and document_type to integer IDs if present
+    const correspondentValue = formData.get('correspondent');
+    const correspondentId = correspondentValue ? parseInt(correspondentValue, 10) : undefined;
+    const documentTypeValue = formData.get('document_type');
+    const documentTypeId = documentTypeValue ? parseInt(documentTypeValue, 10) : undefined;
 
+    // Convert selectedTags (names) to IDs using availableTags
+    const tagIds = selectedTags
+      .map(tagName => {
+        const found = availableTags.find(t => t.name === tagName);
+        return found ? found.id : undefined;
+      })
+      .filter(id => id !== undefined);
+
+    const uploadOptions = {};
+
+    const title = formData.get('title');
+    if (title) uploadOptions.title = title;
+
+    if (correspondentId) uploadOptions.correspondent = correspondentId;
+
+    if (documentTypeId) uploadOptions.document_type = documentTypeId;
+
+    const created = formData.get('created');
+    if (created) uploadOptions.created = created;
+
+    if (tagIds.length > 0) uploadOptions.tags = tagIds;
+
+    // Upload each attachment using background.js - let background handle all notifications
     for (const attachment of currentAttachments) {
       try {
-        const result = await browser.runtime.sendMessage({
+        await browser.runtime.sendMessage({
           action: 'uploadWithOptions',
           messageData: currentMessage,
           attachmentData: attachment,
           uploadOptions: uploadOptions
         });
-
-        if (result.success) {
-          successCount++;
-        } else {
-          errorCount++;
-          showError(`Failed to upload ${attachment.name}: ${result.error}`);
-        }
+        // Background script handles all success/error notifications
       } catch (error) {
-        errorCount++;
-        showError(`Error uploading ${attachment.name}: ${error.message}`);
+        console.error(`Error sending upload message for ${attachment.name}:`, error);
+        // Even message sending errors will be rare, let background handle notifications
       }
     }
 
-    if (successCount > 0 && errorCount === 0) {
-      showSuccess(`Successfully uploaded ${successCount} document(s) to Paperless-ngx!`);
-      setTimeout(() => window.close(), 2000);
-    } else if (successCount > 0) {
-      showSuccess(`Uploaded ${successCount} document(s). ${errorCount} failed.`);
-    }
+    // Show completion message and close dialog
+    showSuccess(`Upload requests sent for ${currentAttachments.length} document(s). Check notifications for results.`);
+    setTimeout(() => window.close(), 2000);
 
   } catch (error) {
-    console.error('Upload error:', error);
-    showError('Upload failed: ' + error.message);
+    console.error('Upload form error:', error);
+    showError('Error processing upload form: ' + error.message);
   } finally {
     uploadBtn.disabled = false;
     uploadBtn.textContent = originalText;
