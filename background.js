@@ -204,7 +204,7 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
     const config = await getPaperlessConfig();
     if (!config.url || !config.token) {
       showNotification("Please configure Paperless-ngx settings first", "error");
-      return;
+      return { success: false, error: "Paperless-ngx not configured" };
     }
 
     const uploadMode = options.mode || 'quick';
@@ -237,7 +237,6 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
         tags: options.tags || [],
         created: options.created,
         source: options.source || 'Thunderbird Email',
-        custom_fields: options.custom_fields || {}
       };
     }
 
@@ -285,7 +284,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === "quickUploadSelected") {
     try {
       const { messageData, selectedAttachments } = message;
-      
+
       let successCount = 0;
       let errorCount = 0;
 
@@ -297,7 +296,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
             attachment,
             { mode: 'quick' }
           );
-          
+
           if (result.success) {
             successCount++;
           } else {
@@ -327,24 +326,40 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 
   if (message.action === "uploadWithOptions") {
-    try {
-      const { messageData, attachmentData, uploadOptions } = message;
+    console.log('📤 Background: Received uploadWithOptions message');
+    
+    (async () => {
+      try {
+        const { messageData, attachmentData, uploadOptions } = message;
+        console.log('📤 Background: Processing upload for:', attachmentData.name);
 
-      // Reconstruct message and attachment objects
-      const messageObj = messageData;
-      const attachmentObj = attachmentData;
+        // Reconstruct message and attachment objects
+        const messageObj = messageData;
+        const attachmentObj = attachmentData;
 
-      const result = await uploadPdfToPaperless(
-        messageObj,
-        attachmentObj,
-        { mode: 'advanced', ...uploadOptions }
-      );
+        const result = await uploadPdfToPaperless(
+          messageObj,
+          attachmentObj,
+          { mode: 'advanced', ...uploadOptions }
+        );
 
-      sendResponse(result);
-    } catch (error) {
-      console.error("Error in upload with options:", error);
-      sendResponse({ success: false, error: error.message });
-    }
+        console.log('📋 Background: Upload result for', attachmentData.name, ':', result);
+        console.log('📋 Background: About to send response:', JSON.stringify(result));
+
+        // Ensure we always send a valid response
+        if (result && typeof result === 'object' && result.hasOwnProperty('success')) {
+          console.log('📋 Background: Sending valid result');
+          sendResponse(result);
+        } else {
+          console.error('❌ Background: Invalid result, sending error response:', result);
+          sendResponse({ success: false, error: "Invalid response from upload function" });
+        }
+      } catch (error) {
+        console.error("❌ Background: Error in upload with options:", error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    
     return true; // Keep the message channel open for async response
   }
 
