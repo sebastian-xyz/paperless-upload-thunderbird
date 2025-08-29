@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', loadSettings);
 document.getElementById('settingsForm').addEventListener('submit', saveSettings);
 
 async function loadSettings() {
-  const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken', 'defaultTags']);
+  const settings = await getPaperlessSettings();
 
   document.getElementById('paperlessUrl').value = settings.paperlessUrl || '';
   document.getElementById('paperlessToken').value = settings.paperlessToken || '';
@@ -42,34 +42,15 @@ async function saveSettings(event) {
   }
 }
 
-function isValidUrl(string) {
-  try {
-    new URL(string);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
 async function testConnection() {
-  const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+  const settings = await getPaperlessSettings();
 
-  try {
-    const response = await fetch(`${settings.paperlessUrl}/api/documents/`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Token ${settings.paperlessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.ok) {
-      showStatus('Settings saved and connection test successful!', 'success');
-    } else {
-      showStatus(`Settings saved but connection test failed (HTTP ${response.status})`, 'error');
-    }
-  } catch (error) {
-    showStatus('Settings saved but connection test failed: ' + error.message, 'error');
+  const success = await testPaperlessConnection(settings.paperlessUrl, settings.paperlessToken);
+  
+  if (success) {
+    showStatus('Settings saved and connection test successful!', 'success');
+  } else {
+    showStatus('Settings saved but connection test failed', 'error');
   }
 }
 

@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 async function updateStatus() {
-  const config = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+  const config = await getPaperlessSettings();
   
   const urlStatus = document.getElementById('url-status');
   const tokenStatus = document.getElementById('token-status');
@@ -19,40 +19,31 @@ async function updateStatus() {
 }
 
 async function testConnection() {
-  const config = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+  const config = await getPaperlessSettings();
   const testBtn = document.getElementById('test-connection');
   
-  testBtn.textContent = 'Testing...';
-  testBtn.disabled = true;
+  const originalText = setButtonLoading(testBtn, 'Testing...');
   
   try {
-    const response = await fetch(`${config.paperlessUrl.replace(/\/$/, '')}/api/documents/`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Token ${config.paperlessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    const success = await testPaperlessConnection(config.paperlessUrl, config.paperlessToken);
     
-    if (response.ok) {
+    if (success) {
       testBtn.textContent = '✓ Connection Successful';
       testBtn.style.background = '#28a745';
       setTimeout(() => {
-        testBtn.textContent = 'Test Connection';
+        resetButtonLoading(testBtn, originalText);
         testBtn.style.background = '#007bff';
-        testBtn.disabled = false;
       }, 2000);
     } else {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error('Connection failed');
     }
   } catch (error) {
     testBtn.textContent = '✗ Connection Failed';
     testBtn.style.background = '#dc3545';
     console.error('Connection test failed:', error);
     setTimeout(() => {
-      testBtn.textContent = 'Test Connection';
+      resetButtonLoading(testBtn, originalText);
       testBtn.style.background = '#007bff';
-      testBtn.disabled = false;
     }, 2000);
   }
 }

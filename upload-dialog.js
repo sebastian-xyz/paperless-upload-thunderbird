@@ -79,14 +79,10 @@ function handlePopupMessage(event) {
 
 async function repopulateCorrespondents() {
   try {
-    const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+    const settings = await getPaperlessSettings();
     if (!settings.paperlessUrl || !settings.paperlessToken) return;
 
-    const response = await fetch(`${settings.paperlessUrl}/api/correspondents/`, {
-      headers: {
-        'Authorization': `Token ${settings.paperlessToken}`
-      }
-    });
+    const response = await makePaperlessRequest('/api/correspondents/', {}, settings);
 
     if (response.ok) {
       const data = await response.json();
@@ -120,14 +116,10 @@ async function repopulateCorrespondents() {
 
 async function repopulateDocumentTypes() {
   try {
-    const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+    const settings = await getPaperlessSettings();
     if (!settings.paperlessUrl || !settings.paperlessToken) return;
 
-    const response = await fetch(`${settings.paperlessUrl}/api/document_types/`, {
-      headers: {
-        'Authorization': `Token ${settings.paperlessToken}`
-      }
-    });
+    const response = await makePaperlessRequest('/api/document_types/', {}, settings);
 
     if (response.ok) {
       const data = await response.json();
@@ -208,18 +200,14 @@ async function loadUploadData() {
 
 async function loadPaperlessData() {
   try {
-    // get paperless url and token
-    const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken']);
+    // Load settings
+    const settings = await getPaperlessSettings();
 
     // Fetch correspondents from Paperless-ngx API if settings are available
     let correspondents = [];
     if (settings.paperlessUrl && settings.paperlessToken) {
       try {
-        const response = await fetch(`${settings.paperlessUrl}/api/correspondents/`, {
-          headers: {
-            'Authorization': `Token ${settings.paperlessToken}`
-          }
-        });
+        const response = await makePaperlessRequest('/api/correspondents/', {}, settings);
         if (response.ok) {
           const data = await response.json();
           // Store both name and id for each correspondent
@@ -248,11 +236,7 @@ async function loadPaperlessData() {
     // Fetch document types from Paperless-ngx API if settings are available
     if (settings.paperlessUrl && settings.paperlessToken) {
       try {
-        const response = await fetch(`${settings.paperlessUrl}/api/document_types/`, {
-          headers: {
-            'Authorization': `Token ${settings.paperlessToken}`
-          }
-        });
+        const response = await makePaperlessRequest('/api/document_types/', {}, settings);
         if (response.ok) {
           const data = await response.json();
           // Store document types
@@ -279,11 +263,7 @@ async function loadPaperlessData() {
     // Fetch tags from Paperless-ngx API if settings are available
     if (settings.paperlessUrl && settings.paperlessToken) {
       try {
-        const response = await fetch(`${settings.paperlessUrl}/api/tags/`, {
-          headers: {
-            'Authorization': `Token ${settings.paperlessToken}`
-          }
-        });
+        const response = await makePaperlessRequest('/api/tags/', {}, settings);
         if (response.ok) {
           const data = await response.json();
           // Store tags
@@ -514,12 +494,9 @@ async function handleUpload(event) {
   event.preventDefault();
 
   const uploadBtn = document.getElementById('uploadBtn');
-  const originalText = uploadBtn.textContent;
+  const originalText = setButtonLoading(uploadBtn, '⏳ Uploading...');
 
   try {
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = '⏳ Uploading...';
-
     clearMessages();
 
     // Collect form data
@@ -571,50 +548,13 @@ async function handleUpload(event) {
 
     // Show completion message and close dialog
     showSuccess(`Upload requests sent for ${currentAttachments.length} document(s). Check notifications for results.`);
-    setTimeout(() => window.close(), 2000);
+    closeWindowWithDelay(2000);
 
   } catch (error) {
     console.error('Upload form error:', error);
     showError('Error processing upload form: ' + error.message);
   } finally {
-    uploadBtn.disabled = false;
-    uploadBtn.textContent = originalText;
-  }
-}
-
-function extractNameFromEmail(emailString) {
-  const match = emailString.match(/^(.+?)\s*<.+>$/);
-  return match ? match[1].trim() : emailString.split('@')[0];
-}
-
-function formatFileSize(bytes) {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function showError(message) {
-  const messageArea = document.getElementById('messageArea');
-  const errorDiv = document.createElement('div');
-  errorDiv.className = 'error';
-  errorDiv.textContent = message;
-  messageArea.appendChild(errorDiv);
-}
-
-function showSuccess(message) {
-  const messageArea = document.getElementById('messageArea');
-  const successDiv = document.createElement('div');
-  successDiv.className = 'success';
-  successDiv.textContent = message;
-  messageArea.appendChild(successDiv);
-}
-
-function clearMessages() {
-  const messageArea = document.getElementById('messageArea');
-  while (messageArea.firstChild) {
-    messageArea.removeChild(messageArea.firstChild);
+    resetButtonLoading(uploadBtn, originalText);
   }
 }
 
