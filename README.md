@@ -4,6 +4,9 @@
   <img src="icons/icon-512.png" alt="Paperless Uploader Icon" width="256" height="256">
 </p>
 
+Available in the [Thunderbird Add-On Gallery](https://addons.thunderbird.net/addon/paperless-ngx-uploader/).
+
+
 ## Screenshots
 
 <div align="center">
