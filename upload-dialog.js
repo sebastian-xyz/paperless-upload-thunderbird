@@ -174,7 +174,7 @@ async function loadUploadData() {
     currentAttachments.forEach(attachment => {
       const li = document.createElement('li');
       li.className = 'file-item';
-      li.textContent = `📄 ${attachment.name} (${formatFileSize(attachment.size)})`;
+      li.textContent = `📄 ${attachment.name} (${browser.messengerUtilities.formatFileSize(attachment.size)})`;
       fileList.appendChild(li);
     });
 
