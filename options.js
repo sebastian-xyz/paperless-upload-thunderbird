@@ -9,7 +9,32 @@ async function loadSettings() {
   document.getElementById('defaultTags').value = settings.defaultTags || '';
 }
 
+
+async function requestSitePermission(url) {
+  // Normalize the origin to ensure it ends with /*
+  const origin = url.replace(/\/?\*?$/, '/*');
+
+  const hasPermission = await browser.permissions.contains({
+    origins: [origin],
+  });
+
+  if (hasPermission) {
+    // Permission already granted \u2014 safe to save and use the URL.
+    return true;
+  }
+
+  const granted = await browser.permissions.request({
+    origins: [origin],
+  });
+
+  // If not granted, it's not safe to save or use the URL,
+  // since the user explicitly denied access.
+  return granted;
+}
+
+
 async function saveSettings(event) {
+
   event.preventDefault();
 
   const paperlessUrl = document.getElementById('paperlessUrl').value.trim();
@@ -20,6 +45,15 @@ async function saveSettings(event) {
   if (paperlessUrl && !isValidUrl(paperlessUrl)) {
     showStatus('Please enter a valid URL (including http:// or https://)', 'error');
     return;
+  }
+
+  // Request permission for the URL if it's provided
+  if (paperlessUrl) {
+    const permissionGranted = await requestSitePermission(paperlessUrl);
+    if (!permissionGranted) {
+      showStatus('Permission to access the specified URL was denied. Please allow access to save the settings.', 'error');
+      return;
+    }
   }
 
   try {
@@ -46,7 +80,7 @@ async function testConnection() {
   const settings = await getPaperlessSettings();
 
   const success = await testPaperlessConnection(settings.paperlessUrl, settings.paperlessToken);
-  
+
   if (success) {
     showStatus('Settings saved and connection test successful!', 'success');
   } else {

@@ -57,7 +57,7 @@ function populateAttachmentList() {
 
     const sizeDiv = document.createElement('div');
     sizeDiv.className = 'attachment-size';
-    sizeDiv.textContent = formatFileSize(attachment.size);
+    sizeDiv.textContent = browser.messengerUtilities.formatFileSize(attachment.size);
 
     infoDiv.appendChild(nameDiv);
     infoDiv.appendChild(sizeDiv);
