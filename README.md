@@ -71,7 +71,9 @@ Available in the [Thunderbird Add-On Gallery](https://addons.thunderbird.net/add
 ---
 
 ## Installation
-
+### Default
+- Just search for the Add-On in Thunderbird and install it like any other.
+### Manual
 1. Download the latest release (`.xpi` file) from the [Releases](https://github.com/sebastian-xyz/paperless-upload-thunderbird/releases) page or build from source.
 2. In Thunderbird, go to **Add-ons and Themes** > **Extensions** > **Install Add-on From File...**
 3. Select the downloaded `.xpi` file and follow the prompts.
