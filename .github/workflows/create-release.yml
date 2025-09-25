@@ -64,13 +64,17 @@ jobs:
           - Automatic document metadata extraction from emails
 
           ### 📥 Installation
+          #### Thunderbird Add-On Gallery
+          - Just search for the Add-On in Thunderbird and install it like any other Add-On
+          #### Manual
           1. Download the `paperless-uploader-${{ steps.get_version.outputs.VERSION }}.xpi` file below. If you use Firefox, make sure to right-click and save the XPI file, not just clicking it (`Save target as...`)
           2. In Thunderbird, go to **Add-ons and Themes** > **Extensions** > **Install Add-on From File...**
           3. Select the downloaded `.xpi` file and follow the prompts
           4. Configure your Paperless-ngx server URL and API key in the extension preferences
+          
 
           ### 🔧 Requirements
-          - Thunderbird 128.0 or later
+          - Thunderbird 140.0 or later
           - Paperless-ngx server with API access
           - Valid API token for your Paperless-ngx instance
           EOF
