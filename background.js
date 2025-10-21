@@ -5,7 +5,11 @@ let currentPdfAttachments = [];
 let currentMessage = null;
 
 // Create context menus for attachments
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener(async () => {
+  // Remove all existing menus first to avoid conflicts
+  await browser.menus.removeAll();
+
+  // Message list context menus
   // Quick upload option
   browser.menus.create({
     id: "quick-upload-pdf-paperless",
@@ -42,6 +46,7 @@ browser.runtime.onInstalled.addListener(() => {
 
 // Handle context menu clicks
 browser.menus.onClicked.addListener(async (info, tab) => {
+  // Message list context menu handlers
   if (info.menuItemId === "quick-upload-pdf-paperless") {
     await handleQuickPdfUpload(info);
   } else if (info.menuItemId === "advanced-upload-pdf-paperless") {
@@ -281,6 +286,18 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 
 // Handle messages from the upload dialog
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.action === "quickUploadFromDisplay") {
+    await handleQuickUploadFromDisplay(message.messageId);
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.action === "advancedUploadFromDisplay") {
+    await handleAdvancedUploadFromDisplay(message.messageId);
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.action === "quickUploadSelected") {
     try {
       const { messageData, selectedAttachments } = message;
@@ -327,7 +344,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
   if (message.action === "uploadWithOptions") {
     console.log('📤 Background: Received uploadWithOptions message');
-    
+
     (async () => {
       try {
         const { messageData, attachmentData, uploadOptions } = message;
@@ -359,7 +376,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
     })();
-    
+
     return true; // Keep the message channel open for async response
   }
 
@@ -446,4 +463,44 @@ function showNotification(message, type = "info") {
     title: "📄 Paperless PDF Uploader",
     message: message
   });
+}
+
+// Handle quick upload from message display popup
+async function handleQuickUploadFromDisplay(messageId) {
+  try {
+    const message = await browser.messages.get(messageId);
+    await processQuickPdfUpload(message);
+  } catch (error) {
+    console.error("Error handling quick upload from display:", error);
+    showNotification("Error processing quick upload", "error");
+  }
+}
+
+// Handle advanced upload from message display popup
+async function handleAdvancedUploadFromDisplay(messageId) {
+  try {
+    const message = await browser.messages.get(messageId);
+
+    // Get PDF attachments
+    const attachments = await browser.messages.listAttachments(message.id);
+    const pdfAttachments = attachments.filter(attachment =>
+      attachment.contentType === "application/pdf" ||
+      attachment.name.toLowerCase().endsWith('.pdf')
+    );
+
+    if (pdfAttachments.length === 0) {
+      showNotification("No PDF attachments found in displayed message", "info");
+      return;
+    }
+
+    // Store current data for the dialog
+    currentMessage = message;
+    currentPdfAttachments = pdfAttachments;
+
+    // Open the advanced upload dialog
+    await openAdvancedUploadDialog(message, pdfAttachments);
+  } catch (error) {
+    console.error("Error handling advanced upload from display:", error);
+    showNotification("Error processing advanced upload", "error");
+  }
 }

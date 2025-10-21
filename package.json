@@ -1,6 +1,6 @@
 {
   "name": "paperless-upload-thunderbird",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Upload PDF attachments directly to Paperless-ngx from Thunderbird",
   "dependencies": {
     "fuse.js": "^7.1.0"
