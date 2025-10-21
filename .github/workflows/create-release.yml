@@ -42,6 +42,8 @@ jobs:
             create-correspondent.js \
             create-document-type.html \
             create-document-type.js \
+            message-display-popup.html \
+            message-display-popup.js \
             fuse.min.js \
             utils.js \
             icons/ \
@@ -71,7 +73,7 @@ jobs:
           2. In Thunderbird, go to **Add-ons and Themes** > **Extensions** > **Install Add-on From File...**
           3. Select the downloaded `.xpi` file and follow the prompts
           4. Configure your Paperless-ngx server URL and API key in the extension preferences
-          
+
 
           ### 🔧 Requirements
           - Thunderbird 140.0 or later
