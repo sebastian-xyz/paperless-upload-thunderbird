@@ -35,10 +35,10 @@ async function loadAttachmentData() {
   }
 }
 
-function populateAttachmentList() {
+async function populateAttachmentList() {
   const listContainer = document.getElementById('attachmentList');
 
-  allAttachments.forEach((attachment, index) => {
+  for (const [index, attachment] of allAttachments.entries()) {
     const item = document.createElement('div');
     item.className = 'attachment-item';
 
@@ -57,14 +57,15 @@ function populateAttachmentList() {
 
     const sizeDiv = document.createElement('div');
     sizeDiv.className = 'attachment-size';
-    sizeDiv.textContent = browser.messengerUtilities.formatFileSize(attachment.size);
+    // Await the formatted size from browser API
+    sizeDiv.textContent = await browser.messengerUtilities.formatFileSize(attachment.size);
 
     infoDiv.appendChild(nameDiv);
     infoDiv.appendChild(sizeDiv);
     item.appendChild(checkbox);
     item.appendChild(infoDiv);
     listContainer.appendChild(item);
-  });
+  }
 }
 
 function setupEventListeners() {

@@ -11,6 +11,7 @@
   },
   "permissions": [
     "messagesRead",
+    "messageDisplay",
     "menus",
     "notifications",
     "permissions",
@@ -24,6 +25,11 @@
     "scripts": [
       "background.js"
     ]
+  },
+  "message_display_action": {
+    "default_title": "Paperless PDF Uploader",
+    "default_popup": "message-display-popup.html",
+    "default_icon": "icons/icon-32.png"
   },
   "action": {
     "default_title": "Paperless PDF Uploader",
