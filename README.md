@@ -41,6 +41,16 @@ Available in the [Thunderbird Add-On Gallery](https://addons.thunderbird.net/add
       </td>
     </tr>
   </table>
+
+  <!-- Third Row -->
+  <table>
+    <tr>
+      <td align="center" valign="top">
+        <h3>Message Context Interface</h3>
+        <img src="assets/message_context_button_pressed.png" alt="Message Context Button Pressed" width="270">
+      </td>
+    </tr>
+  </table>
 </div>
 
 ---
