@@ -13,7 +13,6 @@
     "messagesRead",
     "menus",
     "notifications",
-    "permissions",
     "storage"
   ],
   "optional_host_permissions": [
