@@ -41,5 +41,8 @@
     "128": "icons/icon-128.png",
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self';"
   }
 }
