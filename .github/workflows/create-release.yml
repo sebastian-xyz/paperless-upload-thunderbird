@@ -44,6 +44,8 @@ jobs:
             create-document-type.js \
             message-display-popup.html \
             message-display-popup.js \
+            select-attachments.html \
+            select-attachments.js \
             fuse.min.js \
             utils.js \
             icons/ \
