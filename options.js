@@ -11,25 +11,32 @@ async function loadSettings() {
 
 
 async function requestSitePermission(url) {
-  // Normalize the origin to ensure it ends with /*
-  const origin = url.replace(/\/?\*?$/, '/*');
-
-  const hasPermission = await browser.permissions.contains({
-    origins: [origin],
-  });
-
-  if (hasPermission) {
-    // Permission already granted \u2014 safe to save and use the URL.
-    return true;
+  // Build a valid WebExtension match pattern from the URL.
+  // Match patterns are "<scheme>://<host>/*" and MUST NOT contain a port
+  // number or path. A pattern like "http://192.168.1.111:11800/*" is invalid
+  // and makes permissions.request()/contains() reject, so we derive the origin
+  // from the parsed scheme + hostname only (a host pattern matches all ports).
+  let origin;
+  try {
+    const parsed = new URL(url);
+    origin = `${parsed.protocol}//${parsed.hostname}/*`;
+  } catch (_) {
+    // Should not happen: the caller already validated the URL.
+    return false;
   }
 
-  const granted = await browser.permissions.request({
+  // permissions.request() may only be called from a user input handler, and the
+  // user gesture is lost across any await. Awaiting permissions.contains() first
+  // therefore made this throw "permissions.request may only be called from a
+  // user input handler". Requesting directly keeps the gesture intact; when the
+  // permission is already granted, request() resolves true without prompting,
+  // so a contains() pre-check is unnecessary.
+  //
+  // Returned (not awaited) so the request is issued synchronously while the
+  // caller is still inside the submit handler.
+  return browser.permissions.request({
     origins: [origin],
   });
-
-  // If not granted, it's not safe to save or use the URL,
-  // since the user explicitly denied access.
-  return granted;
 }
 
 
@@ -49,7 +56,14 @@ async function saveSettings(event) {
 
   // Request permission for the URL if it's provided
   if (paperlessUrl) {
-    const permissionGranted = await requestSitePermission(paperlessUrl);
+    let permissionGranted = false;
+    try {
+      permissionGranted = await requestSitePermission(paperlessUrl);
+    } catch (error) {
+      showStatus('Error requesting permission for the specified URL: ' + error.message, 'error');
+      console.error('Error requesting site permission:', error);
+      return;
+    }
     if (!permissionGranted) {
       showStatus('Permission to access the specified URL was denied. Please allow access to save the settings.', 'error');
       return;
