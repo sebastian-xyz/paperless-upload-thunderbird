@@ -229,9 +229,31 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
     let metadata = {};
 
     if (uploadMode === 'quick') {
-      // Minimal metadata for quick upload
+      // Resolve default tag names to IDs
+      let defaultTagIds = [];
+      if (config.defaultTags.length > 0) {
+        try {
+          const tagsResponse = await fetch(`${config.url}/api/tags/`, {
+            headers: { 'Authorization': `Token ${config.token}` }
+          });
+          if (tagsResponse.ok) {
+            const tagsData = await tagsResponse.json();
+            const allTags = tagsData.results || [];
+            defaultTagIds = config.defaultTags
+              .map(name => {
+                const found = allTags.find(t => t.name === name);
+                return found ? found.id : undefined;
+              })
+              .filter(id => id !== undefined);
+          }
+        } catch (err) {
+          console.error("Failed to fetch tags for default tag resolution:", err);
+        }
+      }
+
       metadata = {
         title: attachment.name.replace(/\.pdf$/i, ''), // Remove .pdf extension
+        tags: defaultTagIds,
       };
     } else if (uploadMode === 'advanced') {
       // Use provided options for advanced upload
