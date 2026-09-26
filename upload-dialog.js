@@ -368,9 +368,17 @@ function handleTagAutocomplete(event) {
   }
 }
 
+function sanitizeTagName(tagName) {
+  // Strip HTML-significant characters so tag values cannot inject markup
+  // when rendered locally (showSuggestions) or reflected by the Paperless-ngx
+  // web interface after being stored server-side.
+  return tagName.replace(/[<>&"']/g, '');
+}
+
 function addTag(tagName) {
-  if (!selectedTags.includes(tagName)) {
-    selectedTags.push(tagName);
+  const sanitizedTagName = sanitizeTagName(tagName);
+  if (sanitizedTagName && !selectedTags.includes(sanitizedTagName)) {
+    selectedTags.push(sanitizedTagName);
     renderTags();
   }
 }
