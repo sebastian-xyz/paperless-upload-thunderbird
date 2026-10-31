@@ -58,7 +58,7 @@ function clearMessages(messageAreaId = 'messageArea') {
  * @returns {Promise<Object>} Settings object with paperlessUrl, paperlessToken, and defaultTags
  */
 async function getPaperlessSettings() {
-  return await browser.storage.sync.get(['paperlessUrl', 'paperlessToken', 'defaultTags']);
+  return await browser.storage.sync.get(['paperlessUrl', 'paperlessToken', 'defaultTags', 'uploadAllFileTypes']);
 }
 
 /**
@@ -69,11 +69,12 @@ async function getPaperlessSettings() {
  */
 async function testPaperlessConnection(url, token) {
   try {
-    const response = await fetch(`${url.replace(/\/$/, '')}/api/documents/`, {
+    // page_size=1: the default page contains 25 documents including their
+    // full OCR text, which can be several MB just for a connection test
+    const response = await fetch(`${url.replace(/\/$/, '')}/api/documents/?page_size=1`, {
       method: 'GET',
       headers: {
-        'Authorization': `Token ${token}`,
-        'Content-Type': 'application/json'
+        'Authorization': `Token ${token}`
       }
     });
     return response.ok;
@@ -139,18 +140,23 @@ function resetButtonLoading(button, originalText) {
 }
 
 /**
- * Send message to parent window (for popup dialogs)
+ * Notify the other extension pages (e.g. the upload dialog) about an event.
+ * Dialogs are opened with browser.windows.create(), so window.opener is
+ * always null and window.postMessage() cannot be used. runtime messaging
+ * reaches every open extension page instead.
  * @param {string} action - Action name
  * @param {boolean} success - Whether the action was successful
  * @param {Object} data - Additional data to send (optional)
  */
-function sendMessageToParent(action, success, data = {}) {
-  if (window.opener) {
-    window.opener.postMessage({
-      action: action,
-      success: success,
-      ...data
-    }, '*');
+async function sendMessageToParent(action, success, data = {}) {
+  // The opening upload dialog passes its own id as ?opener=..., so that only
+  // this dialog selects the new entry when several dialogs are open.
+  const opener = new URLSearchParams(window.location.search).get('opener');
+  try {
+    await browser.runtime.sendMessage({ action, success, opener, ...data });
+  } catch (error) {
+    // No receiver (e.g. the upload dialog was closed in the meantime)
+    console.debug('No receiver for', action, error);
   }
 }
 
@@ -202,6 +208,142 @@ async function makePaperlessRequest(endpoint, options = {}, settings = null) {
   return await fetch(url, mergedOptions);
 }
 
+/**
+ * Fetch *all* objects of a paginated Paperless-ngx list endpoint.
+ * Paperless returns only 25 results per page by default, so a plain
+ * GET /api/tags/ silently drops everything after the first page.
+ * We page via the `page` parameter instead of following `next`, because
+ * `next` is often wrong (http vs https) behind reverse proxies.
+ * @param {string} endpoint - e.g. '/api/tags/'
+ * @param {Object} settings - optional settings object
+ * @returns {Promise<Array>} all results
+ */
+async function fetchAllResults(endpoint, settings = null) {
+  const results = [];
+  const separator = endpoint.includes('?') ? '&' : '?';
+  // Upper bound so a misbehaving server cannot cause an endless loop
+  for (let page = 1; page <= 100; page++) {
+    const response = await makePaperlessRequest(
+      `${endpoint}${separator}page_size=1000&page=${page}`, {}, settings);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} for ${endpoint}`);
+    }
+    const data = await response.json();
+    results.push(...(data.results || []));
+    if (!data.next || !data.results || data.results.length === 0) return results;
+  }
+  console.warn(`fetchAllResults: stopped after 100 pages of ${endpoint}`);
+  return results;
+}
+
+/**
+ * File types Paperless-ngx can consume.
+ * PDF, images and plain text work out of the box, Office documents and
+ * e-mails require the optional Tika/Gotenberg integration on the server.
+ */
+const PAPERLESS_FILE_TYPES = {
+  pdf: {
+    extensions: ['pdf'],
+    mimeTypes: ['application/pdf'],
+  },
+  extended: {
+    extensions: [
+      'png', 'jpg', 'jpeg', 'tif', 'tiff', 'gif', 'webp', 'bmp',
+      'txt',
+      'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf',
+      'eml',
+    ],
+    mimeTypes: [
+      'image/png', 'image/jpeg', 'image/tiff', 'image/gif', 'image/webp', 'image/bmp',
+      'text/plain',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.oasis.opendocument.text',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'application/vnd.oasis.opendocument.presentation',
+      'application/rtf', 'text/rtf',
+      'message/rfc822',
+    ],
+  },
+};
+
+/**
+ * Whether an attachment can be uploaded to Paperless-ngx.
+ * @param {{name: string, contentType: string}} attachment
+ * @param {boolean} allowAllTypes - also accept images, text and Office files
+ */
+function isUploadableAttachment(attachment, allowAllTypes = false) {
+  const groups = allowAllTypes
+    ? [PAPERLESS_FILE_TYPES.pdf, PAPERLESS_FILE_TYPES.extended]
+    : [PAPERLESS_FILE_TYPES.pdf];
+  const name = (attachment.name || '').toLowerCase();
+  const extension = name.includes('.') ? name.split('.').pop() : '';
+  const contentType = (attachment.contentType || '').toLowerCase().split(';')[0].trim();
+  return groups.some(group =>
+    group.mimeTypes.includes(contentType) || group.extensions.includes(extension));
+}
+
+/**
+ * Remove the file extension from a file name ("Invoice.2024.pdf" -> "Invoice.2024").
+ */
+function stripFileExtension(fileName) {
+  // Only strip known extensions: "Kontoauszug 03.2025" must stay intact
+  const name = fileName || '';
+  const match = name.match(/\.([a-z0-9]+)$/i);
+  const known = [...PAPERLESS_FILE_TYPES.pdf.extensions, ...PAPERLESS_FILE_TYPES.extended.extensions];
+  return match && known.includes(match[1].toLowerCase()) ? name.slice(0, -match[0].length) : name;
+}
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'gif', 'webp', 'bmp'];
+
+/**
+ * Whether an attachment is an image (often a signature logo).
+ */
+function isImageAttachment(attachment) {
+  const contentType = (attachment.contentType || '').toLowerCase();
+  const extension = ((attachment.name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1];
+  return contentType.startsWith('image/') || IMAGE_EXTENSIONS.includes(extension);
+}
+
+/**
+ * Load the data a dialog window was opened with.
+ * The storage key is passed as ?key=... in the window URL. The data is not
+ * removed here, so reloading the dialog still works; the background script
+ * removes old entries.
+ */
+async function takeDialogData() {
+  const key = new URLSearchParams(window.location.search).get('key');
+  if (!key) return null;
+  const result = await browser.storage.local.get(key);
+  return result[key] || null;
+}
+
+/**
+ * Turn an error response of the Paperless-ngx API into a readable message.
+ * DRF returns either {"detail": "..."} or field errors like
+ * {"name": ["correspondent with this name already exists."]}.
+ */
+async function formatApiError(response) {
+  const text = await response.text();
+  try {
+    const data = JSON.parse(text);
+    if (typeof data === 'string') return data;
+    if (Array.isArray(data)) return data.join(' ');
+    if (data.detail) return data.detail;
+    const messages = Object.entries(data).map(([field, value]) =>
+      `${field}: ${Array.isArray(value) ? value.join(' ') : value}`);
+    if (messages.length > 0) return messages.join('; ');
+  } catch (_) {
+    // not JSON (e.g. HTML error page of a reverse proxy)
+  }
+  return `HTTP ${response.status} ${response.statusText}`.trim() +
+    (text && text.length < 200 ? `: ${text}` : '');
+}
+
 // Export functions for use in other files
 if (typeof window !== 'undefined') {
   window.showError = showError;
@@ -216,4 +358,10 @@ if (typeof window !== 'undefined') {
   window.sendMessageToParent = sendMessageToParent;
   window.closeWindowWithDelay = closeWindowWithDelay;
   window.makePaperlessRequest = makePaperlessRequest;
+  window.fetchAllResults = fetchAllResults;
+  window.isUploadableAttachment = isUploadableAttachment;
+  window.stripFileExtension = stripFileExtension;
+  window.isImageAttachment = isImageAttachment;
+  window.takeDialogData = takeDialogData;
+  window.formatApiError = formatApiError;
 }

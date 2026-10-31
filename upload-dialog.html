@@ -266,22 +266,6 @@
       font-weight: bold;
     }
 
-    .tag-suggestion-item {
-      padding: 8px 12px;
-      cursor: pointer;
-      border-bottom: 1px solid #f8f9fa;
-      font-size: 14px;
-    }
-
-    .tag-suggestion-item:hover,
-    .tag-suggestion-item.highlighted {
-      background-color: #f8f9fa;
-    }
-
-    .tag-suggestion-item:last-child {
-      border-bottom: none;
-    }
-
     .form-group {
       position: relative;
       margin-bottom: 20px;
@@ -311,7 +295,7 @@
       <form id="uploadForm">
         <div class="form-group">
           <label for="documentTitle">Document Title *</label>
-          <input type="text" id="documentTitle" name="title" required>
+          <input type="text" id="documentTitle" name="title" maxlength="128" required>
           <div class="help-text">This will be the title in Paperless-ngx</div>
         </div>
 
@@ -358,12 +342,6 @@
           <div class="help-text">When was this document created (defaults to email date)</div>
         </div>
 
-        <div class="form-group">
-          <label for="source">Source</label>
-          <input type="text" id="source" name="source" value="Thunderbird Email">
-          <div class="help-text">Where this document came from</div>
-        </div>
-
         <div id="messageArea"></div>
 
         <div class="button-group">
@@ -387,7 +365,7 @@
   </div>
 
   <script src="utils.js"></script>
-  <script src="fuse.min.js"></script>
+  <script src="search.js"></script>
   <script src="upload-dialog.js"></script>
 </body>
 

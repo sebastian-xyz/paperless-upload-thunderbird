@@ -1,8 +1,10 @@
+// Id of this dialog window (storage key from the URL), used to address
+// messages from the creation dialogs opened by *this* window
+const dialogId = new URLSearchParams(window.location.search).get('key') || '';
 let currentAttachments = [];
 let currentMessage = null;
 let selectedTags = [];
 let availableTags = [];
-let fuse = null;
 
 document.addEventListener('DOMContentLoaded', async function () {
   await loadUploadData();
@@ -25,14 +27,14 @@ function setupPlusButtons() {
     });
   }
 
-  // Listen for messages from popup windows
-  window.addEventListener('message', handlePopupMessage);
+  // Listen for messages from the creation dialogs (separate windows)
+  browser.runtime.onMessage.addListener(handlePopupMessage);
 }
 
 async function createNewCorrespondent() {
   try {
     const popup = await browser.windows.create({
-      url: browser.runtime.getURL('create-correspondent.html'),
+      url: browser.runtime.getURL(`create-correspondent.html?opener=${encodeURIComponent(dialogId)}`),
       type: 'popup',
       width: 600,
       height: 500
@@ -45,7 +47,7 @@ async function createNewCorrespondent() {
 async function createNewDocumentType() {
   try {
     const popup = await browser.windows.create({
-      url: browser.runtime.getURL('create-document-type.html'),
+      url: browser.runtime.getURL(`create-document-type.html?opener=${encodeURIComponent(dialogId)}`),
       type: 'popup',
       width: 600,
       height: 500,
@@ -55,109 +57,85 @@ async function createNewDocumentType() {
   }
 }
 
-function handlePopupMessage(event) {
-  if (event.data.action === 'correspondentCreated' && event.data.success) {
-    // Repopulate correspondents and select the new one
-    repopulateCorrespondents().then(() => {
-      if (event.data.correspondent) {
-        const select = document.getElementById('correspondent');
-        select.value = event.data.correspondent.id;
-        showSuccess(`Correspondent "${event.data.correspondent.name}" created successfully!`);
-      }
+function handlePopupMessage(message) {
+  if (!message || !message.success) {
+    return undefined;
+  }
+  // Every open upload dialog refreshes its list, but only the dialog that
+  // opened the creation window selects the new entry.
+  const isOpener = message.opener === dialogId;
+  if (message.action === 'correspondentCreated' && message.correspondent) {
+    loadCorrespondents(isOpener ? message.correspondent : null).then(() => {
+      if (isOpener) showSuccess(`Correspondent "${message.correspondent.name}" created successfully!`);
     });
-  } else if (event.data.action === 'documentTypeCreated' && event.data.success) {
-    // Repopulate document types and select the new one
-    repopulateDocumentTypes().then(() => {
-      if (event.data.documentType) {
-        const select = document.getElementById('documentType');
-        select.value = event.data.documentType.id;
-        showSuccess(`Document type "${event.data.documentType.name}" created successfully!`);
-      }
+  } else if (message.action === 'documentTypeCreated' && message.documentType) {
+    loadDocumentTypes(isOpener ? message.documentType : null).then(() => {
+      if (isOpener) showSuccess(`Document type "${message.documentType.name}" created successfully!`);
     });
+  }
+  return undefined;
+}
+
+/**
+ * Fill a <select> with {id, name} items, keeping the first placeholder option.
+ * If `selectItem` is given it is selected (and added if the server list does
+ * not contain it yet, e.g. due to caching). Otherwise the previous selection
+ * is kept.
+ */
+function populateSelect(selectId, items, selectItem = null) {
+  const select = document.getElementById(selectId);
+  const previousValue = select.value;
+
+  while (select.children.length > 1) {
+    select.removeChild(select.lastChild);
+  }
+
+  const sorted = [...items];
+  if (selectItem && !sorted.some(item => item.id === selectItem.id)) {
+    sorted.push({ id: selectItem.id, name: selectItem.name });
+  }
+  sorted.sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const item of sorted) {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.name;
+    select.appendChild(option);
+  }
+
+  const wanted = selectItem ? String(selectItem.id) : previousValue;
+  if (wanted && [...select.options].some(o => o.value === wanted)) {
+    select.value = wanted;
   }
 }
 
-async function repopulateCorrespondents() {
+async function loadSelectData(endpoint, selectId, selectItem = null) {
   try {
     const settings = await getPaperlessSettings();
     if (!settings.paperlessUrl || !settings.paperlessToken) return;
-
-    const response = await makePaperlessRequest('/api/correspondents/', {}, settings);
-
-    if (response.ok) {
-      const data = await response.json();
-      const correspondents = data.results.map(c => ({ id: c.id, name: c.name }));
-
-      const select = document.getElementById('correspondent');
-      const currentValue = select.value;
-
-      // Clear existing options except the first one
-      while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-      }
-
-      // Add all correspondents
-      correspondents.forEach(correspondent => {
-        const option = document.createElement('option');
-        option.value = correspondent.id;
-        option.textContent = correspondent.name;
-        select.appendChild(option);
-      });
-
-      // Restore selection if it still exists
-      if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
-        select.value = currentValue;
-      }
-    }
+    const results = await fetchAllResults(endpoint, settings);
+    populateSelect(selectId, results.map(r => ({ id: r.id, name: r.name })), selectItem);
   } catch (error) {
-    console.error('Error repopulating correspondents:', error);
+    console.error(`Error loading ${endpoint}:`, error);
   }
 }
 
-async function repopulateDocumentTypes() {
-  try {
-    const settings = await getPaperlessSettings();
-    if (!settings.paperlessUrl || !settings.paperlessToken) return;
+function loadCorrespondents(selectItem = null) {
+  return loadSelectData('/api/correspondents/', 'correspondent', selectItem);
+}
 
-    const response = await makePaperlessRequest('/api/document_types/', {}, settings);
-
-    if (response.ok) {
-      const data = await response.json();
-      const documentTypes = data.results.map(d => ({ id: d.id, name: d.name }));
-
-      const select = document.getElementById('documentType');
-      const currentValue = select.value;
-
-      // Clear existing options except the first one
-      while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-      }
-
-      // Add all document types
-      documentTypes.forEach(docType => {
-        const option = document.createElement('option');
-        option.value = docType.id;
-        option.textContent = docType.name;
-        select.appendChild(option);
-      });
-
-      // Restore selection if it still exists
-      if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
-        select.value = currentValue;
-      }
-    }
-  } catch (error) {
-    console.error('Error repopulating document types:', error);
-  }
+function loadDocumentTypes(selectItem = null) {
+  return loadSelectData('/api/document_types/', 'documentType', selectItem);
 }
 
 async function loadUploadData() {
   try {
-    const result = await browser.storage.local.get('currentUploadData');
-    const uploadData = result.currentUploadData;
+    const uploadData = await takeDialogData();
 
     if (!uploadData) {
-      showError("No upload data found. Please try again.");
+      // #messageArea is inside the still hidden main content, so show the
+      // error in place of the loading text
+      showLoadingError('No upload data found. Please start the upload again from the message.');
       return;
     }
 
@@ -169,24 +147,43 @@ async function loadUploadData() {
     document.getElementById('emailSubject').textContent = currentMessage.subject;
     document.getElementById('emailDate').textContent = new Date(currentMessage.date).toLocaleDateString();
 
-    // Populate file list
+    // Populate file list (with checkboxes, so e.g. signature images can be skipped)
     const fileList = document.getElementById('fileList');
-    currentAttachments.forEach(attachment => {
+    for (const [index, attachment] of currentAttachments.entries()) {
       const li = document.createElement('li');
       li.className = 'file-item';
-      li.textContent = `📄 ${attachment.name} (${browser.messengerUtilities.formatFileSize(attachment.size)})`;
-      fileList.appendChild(li);
-    });
 
-    // Set default title (first attachment name without extension)
-    if (currentAttachments.length > 0) {
-      const defaultTitle = currentAttachments[0].name.replace(/\.pdf$/i, '');
-      document.getElementById('documentTitle').value = defaultTitle;
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'attachment-checkbox';
+      checkbox.dataset.index = index;
+      checkbox.checked = true;
+
+      const size = await browser.messengerUtilities.formatFileSize(attachment.size);
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(` 📄 ${attachment.name} (${size})`));
+      li.appendChild(label);
+      fileList.appendChild(li);
     }
 
-    // Set default date to email date
+    // Default title: file name without extension. With several attachments
+    // an empty title means "use each file name" (otherwise every document
+    // would get the title of the first attachment).
+    const titleInput = document.getElementById('documentTitle');
+    if (currentAttachments.length === 1) {
+      titleInput.value = stripFileExtension(currentAttachments[0].name);
+    } else {
+      titleInput.required = false;
+      titleInput.placeholder = 'Leave empty to use each file name';
+    }
+
+    // Default date: email date in *local* time (toISOString() is UTC and
+    // yields the previous day for mails received shortly after midnight)
     const emailDate = new Date(currentMessage.date);
-    document.getElementById('documentDate').value = emailDate.toISOString().split('T')[0];
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('documentDate').value =
+      `${emailDate.getFullYear()}-${pad(emailDate.getMonth() + 1)}-${pad(emailDate.getDate())}`;
 
     // Show main content
     document.getElementById('loadingSection').style.display = 'none';
@@ -194,94 +191,41 @@ async function loadUploadData() {
 
   } catch (error) {
     console.error('Error loading upload data:', error);
-    showError('Error loading data: ' + error.message);
+    showLoadingError('Error loading data: ' + error.message);
   }
 }
 
+function showLoadingError(message) {
+  const loadingSection = document.getElementById('loadingSection');
+  loadingSection.textContent = '';
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error';
+  errorDiv.textContent = message;
+  loadingSection.appendChild(errorDiv);
+}
+
 async function loadPaperlessData() {
-  try {
-    // Load settings
-    const settings = await getPaperlessSettings();
-
-    // Fetch correspondents from Paperless-ngx API if settings are available
-    let correspondents = [];
-    if (settings.paperlessUrl && settings.paperlessToken) {
-      try {
-        const response = await makePaperlessRequest('/api/correspondents/', {}, settings);
-        if (response.ok) {
-          const data = await response.json();
-          // Store both name and id for each correspondent
-          correspondents = data.results.map(c => ({ id: c.id, name: c.name }));
-          // You can use 'correspondents' as needed here
-          // Example: console.log(correspondents);
-        }
-      } catch (err) {
-        console.error('Failed to fetch correspondents from Paperless-ngx:', err);
-      }
-    }
-
-    if (correspondents.length > 0) {
-      const correspondentSelect = document.getElementById('correspondent');
-      correspondents.forEach(correspondent => {
-        const option = document.createElement('option');
-        option.value = correspondent.id;
-        option.textContent = correspondent.name;
-        correspondentSelect.appendChild(option);
-      });
-
-    }
-
-
-    document_types = [];
-    // Fetch document types from Paperless-ngx API if settings are available
-    if (settings.paperlessUrl && settings.paperlessToken) {
-      try {
-        const response = await makePaperlessRequest('/api/document_types/', {}, settings);
-        if (response.ok) {
-          const data = await response.json();
-          // Store document types
-          document_types = data.results.map(d => ({ id: d.id, name: d.name }));
-        }
-      } catch (err) {
-        console.error('Failed to fetch document types from Paperless-ngx:', err);
-      }
-    }
-
-    if (document_types.length > 0) {
-      const docTypeSelect = document.getElementById('documentType');
-      document_types.forEach(docType => {
-        const option = document.createElement('option');
-        option.value = docType.id;
-        option.textContent = docType.name;
-        docTypeSelect.appendChild(option);
-      });
-    }
-
-
-    tags = [];
-
-    // Fetch tags from Paperless-ngx API if settings are available
-    if (settings.paperlessUrl && settings.paperlessToken) {
-      try {
-        const response = await makePaperlessRequest('/api/tags/', {}, settings);
-        if (response.ok) {
-          const data = await response.json();
-          // Store tags
-          tags = data.results.map(t => ({ id: t.id, name: t.name }));
-        }
-      } catch (err) {
-        console.error('Failed to fetch tags from Paperless-ngx:', err);
-      }
-    }
-
-    if (tags.length > 0) {
-      availableTags = tags;
-    }
-
-  } catch (error) {
-    console.error('Error loading Paperless data:', error);
-    // Continue without the data - it's not critical for basic upload
+  const settings = await getPaperlessSettings();
+  if (!settings.paperlessUrl || !settings.paperlessToken) {
+    return; // Not critical for a basic upload
   }
+
+  await Promise.all([
+    loadCorrespondents(),
+    loadDocumentTypes(),
+    fetchAllResults('/api/tags/', settings)
+      .then(results => {
+        availableTags = results.map(t => ({ id: t.id, name: t.name }));
+        // Pre-select the configured default tags (previously only used by
+        // the quick upload, although the options describe them as applying
+        // to uploaded documents in general)
+        const defaultTags = (settings.defaultTags || '').split(',').map(t => t.trim());
+        defaultTags
+          .filter(name => availableTags.some(t => t.name === name))
+          .forEach(addTag);
+      })
+      .catch(err => console.error('Failed to fetch tags from Paperless-ngx:', err)),
+  ]);
 }
 
 function setupEventListeners() {
@@ -321,12 +265,21 @@ function handleTagInput(event) {
       return;
     }
 
-    // Otherwise, use the input value
+    // Otherwise only accept existing tags (unknown names used to be shown as
+    // chips but were silently dropped on upload). Take exactly what the user
+    // sees: an exact match, otherwise the first entry of the suggestion list.
     const tagValue = event.target.value.trim();
-    if (tagValue && !selectedTags.includes(tagValue)) {
-      addTag(tagValue);
+    if (!tagValue) return;
+    const exact = availableTags.find(t => t.name.toLowerCase() === tagValue.toLowerCase());
+    const firstSuggestion = document.querySelector('.suggestion-item');
+    const match = exact ? exact.name : firstSuggestion && firstSuggestion.textContent;
+    if (match) {
+      addTag(match);
       event.target.value = '';
       hideSuggestions();
+    } else {
+      clearMessages();
+      showError(`Tag "${tagValue}" does not exist in Paperless-ngx.`);
     }
   } else if (event.key === 'Backspace' && event.target.value === '') {
     // Remove last tag on backspace if input is empty
@@ -352,20 +305,7 @@ function handleTagAutocomplete(event) {
     return;
   }
 
-  // Initialize Fuse if not already done and we have tags
-  if (!fuse && availableTags.length > 0) {
-    const options = {
-      includeScore: true,
-      threshold: 0.4, // Lower = more strict, higher = more fuzzy
-      keys: ['name'] // Search in the name field
-    };
-    fuse = new Fuse(availableTags, options);
-  }
-
-  if (fuse) {
-    const results = fuse.search(query);
-    showSuggestions(results.map(result => result.item), query);
-  }
+  showSuggestions(fuzzySearch(availableTags, query, { limit: 20 }), query);
 }
 
 function addTag(tagName) {
@@ -490,6 +430,14 @@ function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function getSelectedAttachments() {
+  return [...document.querySelectorAll('.attachment-checkbox:checked')]
+    .map(checkbox => ({
+      checkbox,
+      attachment: currentAttachments[parseInt(checkbox.dataset.index, 10)]
+    }));
+}
+
 async function handleUpload(event) {
   event.preventDefault();
 
@@ -530,24 +478,41 @@ async function handleUpload(event) {
 
     if (tagIds.length > 0) uploadOptions.tags = tagIds;
 
-    // Upload each attachment using background.js - let background handle all notifications
-    for (const attachment of currentAttachments) {
+    const selectedAttachments = getSelectedAttachments();
+    if (selectedAttachments.length === 0) {
+      showError('Please select at least one attachment.');
+      return;
+    }
+
+    // Upload each attachment using background.js (it also shows notifications)
+    const failures = [];
+    for (const { checkbox, attachment } of selectedAttachments) {
+      let result;
       try {
-        await browser.runtime.sendMessage({
+        result = await browser.runtime.sendMessage({
           action: 'uploadWithOptions',
           messageData: currentMessage,
           attachmentData: attachment,
           uploadOptions: uploadOptions
         });
-        // Background script handles all success/error notifications
       } catch (error) {
-        console.error(`Error sending upload message for ${attachment.name}:`, error);
-        // Even message sending errors will be rare, let background handle notifications
+        result = { success: false, error: error.message };
+      }
+      if (result && result.success) {
+        // Deselect, so a retry does not upload this file a second time
+        checkbox.checked = false;
+      } else {
+        failures.push(`${attachment.name}: ${(result && result.error) || 'unknown error'}`);
       }
     }
 
-    // Show completion message and close dialog
-    showSuccess(`Upload requests sent for ${currentAttachments.length} document(s). Check notifications for results.`);
+    if (failures.length > 0) {
+      // Keep the dialog (and the entered metadata) open for a retry
+      failures.forEach(failure => showError(`Upload failed – ${failure}`));
+      return;
+    }
+
+    showSuccess(`Sent ${selectedAttachments.length} document(s) to Paperless-ngx. Check notifications for the import result.`);
     closeWindowWithDelay(2000);
 
   } catch (error) {

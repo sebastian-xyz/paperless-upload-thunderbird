@@ -7,6 +7,7 @@ async function loadSettings() {
   document.getElementById('paperlessUrl').value = settings.paperlessUrl || '';
   document.getElementById('paperlessToken').value = settings.paperlessToken || '';
   document.getElementById('defaultTags').value = settings.defaultTags || '';
+  document.getElementById('uploadAllFileTypes').checked = !!settings.uploadAllFileTypes;
 }
 
 
@@ -47,6 +48,7 @@ async function saveSettings(event) {
   const paperlessUrl = document.getElementById('paperlessUrl').value.trim();
   const paperlessToken = document.getElementById('paperlessToken').value.trim();
   const defaultTags = document.getElementById('defaultTags').value.trim();
+  const uploadAllFileTypes = document.getElementById('uploadAllFileTypes').checked;
 
   // Validate URL format
   if (paperlessUrl && !isValidUrl(paperlessUrl)) {
@@ -74,7 +76,8 @@ async function saveSettings(event) {
     await browser.storage.sync.set({
       paperlessUrl: paperlessUrl.replace(/\/$/, ''), // Remove trailing slash
       paperlessToken: paperlessToken,
-      defaultTags: defaultTags
+      defaultTags: defaultTags,
+      uploadAllFileTypes: uploadAllFileTypes
     });
 
     showStatus('Settings saved successfully!', 'success');
