@@ -1,9 +1,6 @@
 // Background script for Paperless-ngx PDF Uploader
 console.log("Paperless PDF Uploader loaded!");
 
-let currentPdfAttachments = [];
-let currentMessage = null;
-
 // Create context menus for attachments
 browser.runtime.onInstalled.addListener(async () => {
   // Remove all existing menus first to avoid conflicts
@@ -54,17 +51,61 @@ browser.menus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+/**
+ * Collect all selected messages. MessageLists are paginated (100 per page),
+ * further pages have to be fetched with messages.continueList().
+ */
+async function collectSelectedMessages(messageList) {
+  const messages = [...(messageList?.messages || [])];
+  let listId = messageList?.id;
+  while (listId) {
+    const page = await browser.messages.continueList(listId);
+    messages.push(...page.messages);
+    listId = page.id;
+  }
+  return messages;
+}
+
 async function handleQuickPdfUpload(info) {
   try {
-    const messages = info.selectedMessages.messages;
-    if (!messages || messages.length === 0) {
+    const messages = await collectSelectedMessages(info.selectedMessages);
+    if (messages.length === 0) {
       showNotification("No messages selected", "error");
       return;
     }
 
-    // Process each selected message for PDF attachments
+    // Several messages: upload silently and show one summary. Failed imports
+    // are still reported per file by trackConsumptionTask().
+    const batch = {
+      silent: messages.length > 1,
+      remainingDialogs: MAX_DIALOGS,
+      skippedDialogs: 0,
+      sent: 0,
+      failed: 0,
+      withoutAttachments: 0,
+    };
     for (const message of messages) {
-      await processQuickPdfUpload(message);
+      await processQuickPdfUpload(message, batch);
+    }
+
+    if (messages.length === 1) {
+      if (batch.withoutAttachments === 1) {
+        showNotification("No supported attachments found in selected message", "info");
+      }
+      return;
+    }
+    const parts = [];
+    if (batch.sent > 0) parts.push(`⏳ Sent ${batch.sent} document(s) to Paperless-ngx`);
+    if (batch.failed > 0) parts.push(`❌ ${batch.failed} upload(s) failed`);
+    if (batch.withoutAttachments > 0) {
+      parts.push(`${batch.withoutAttachments} of ${messages.length} messages have no supported attachments`);
+    }
+    if (batch.skippedDialogs > 0) {
+      parts.push(`${batch.skippedDialogs} message(s) with several attachments skipped ` +
+        `(at most ${MAX_DIALOGS} selection dialogs at once)`);
+    }
+    if (parts.length > 0) {
+      showNotification(parts.join('\n'), batch.failed > 0 ? "error" : "info");
     }
   } catch (error) {
     console.error("Error handling quick PDF upload:", error);
@@ -74,95 +115,158 @@ async function handleQuickPdfUpload(info) {
 
 async function handleAdvancedPdfUpload(info) {
   try {
-    const messages = info.selectedMessages.messages;
-    if (!messages || messages.length === 0) {
+    const messages = await collectSelectedMessages(info.selectedMessages);
+    if (messages.length === 0) {
       showNotification("No messages selected", "error");
       return;
     }
 
-    // For now, just handle the first message (can be extended)
-    const message = messages[0];
-
-    // Get PDF attachments
-    const attachments = await browser.messages.listAttachments(message.id);
-    const pdfAttachments = attachments.filter(attachment =>
-      attachment.contentType === "application/pdf" ||
-      attachment.name.toLowerCase().endsWith('.pdf')
-    );
-
-    if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in selected message", "info");
-      return;
+    // One dialog per message (previously all but the first were ignored),
+    // but never more than MAX_DIALOGS windows at once
+    let opened = 0;
+    let skipped = 0;
+    for (const message of messages) {
+      if (opened >= MAX_DIALOGS) {
+        skipped++;
+        continue;
+      }
+      const attachments = await getUploadableAttachments(message.id);
+      if (attachments.length > 0) {
+        await openAdvancedUploadDialog(message, attachments);
+        opened++;
+      }
     }
-
-    // Store current data for the dialog
-    currentMessage = message;
-    currentPdfAttachments = pdfAttachments;
-
-    // Open the advanced upload dialog
-    await openAdvancedUploadDialog(message, pdfAttachments);
-
+    if (opened === 0) {
+      showNotification("No supported attachments found in selected messages", "info");
+    } else if (skipped > 0) {
+      showNotification(`Opened ${MAX_DIALOGS} upload dialogs, ${skipped} further message(s) skipped. ` +
+        `Use Quick Upload for many messages.`, "info");
+    }
   } catch (error) {
     console.error("Error handling advanced PDF upload:", error);
     showNotification("Error processing attachments", "error");
   }
 }
 
-async function processQuickPdfUpload(message) {
+/**
+ * List the attachments of a message that Paperless-ngx can consume.
+ * Only PDFs by default; images, text and Office documents if enabled in
+ * the options ("uploadAllFileTypes").
+ */
+async function getUploadableAttachments(messageId) {
+  const [attachments, settings] = await Promise.all([
+    browser.messages.listAttachments(messageId),
+    browser.storage.sync.get('uploadAllFileTypes'),
+  ]);
+  return attachments.filter(attachment =>
+    isUploadableAttachment(attachment, !!settings.uploadAllFileTypes));
+}
+
+/**
+ * Quick upload for one message.
+ * @param {Object} batch - optional state shared across several messages:
+ *   silent, remainingDialogs, skippedDialogs, sent, failed, withoutAttachments
+ * @returns {Promise<boolean>} false if the message has no supported attachments
+ */
+async function processQuickPdfUpload(message, batch = null) {
   try {
-    const attachments = await browser.messages.listAttachments(message.id);
-    const pdfAttachments = attachments.filter(attachment =>
-      attachment.contentType === "application/pdf" ||
-      attachment.name.toLowerCase().endsWith('.pdf')
-    );
+    const pdfAttachments = await getUploadableAttachments(message.id);
 
     if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in selected messages", "info");
-      return;
+      if (batch) batch.withoutAttachments++;
+      return false;
     }
 
-    // If there's only one attachment, upload directly
-    if (pdfAttachments.length === 1) {
-      await uploadPdfToPaperless(message, pdfAttachments[0], { mode: 'quick' });
-      return;
+    // A single attachment is uploaded directly - unless it is an image,
+    // which is often just a logo from the signature.
+    if (pdfAttachments.length === 1 && !isImageAttachment(pdfAttachments[0])) {
+      const result = await uploadPdfToPaperless(message, pdfAttachments[0],
+        { mode: 'quick', silent: !!(batch && batch.silent) });
+      if (batch) {
+        if (result.success) batch.sent++; else batch.failed++;
+      }
+      return true;
     }
 
-    // If there are multiple attachments, show selection dialog
+    // Otherwise let the user choose
+    if (batch) {
+      if (batch.remainingDialogs <= 0) {
+        batch.skippedDialogs++;
+        return true;
+      }
+      batch.remainingDialogs--;
+    }
     await openAttachmentSelectionDialog(message, pdfAttachments);
+    return true;
 
   } catch (error) {
     console.error("Error processing PDF attachments:", error);
     showNotification(`Error processing attachments: ${error.message}`, "error");
+    if (batch) batch.failed++;
+    return true; // error already reported
   }
 }
 
+const DIALOG_DATA_PREFIX = 'dialogData-';
+const MAX_DIALOGS = 5;
+
+/**
+ * Open a dialog window and hand it its data under a unique storage key.
+ * A single fixed key ("quickUploadData"/"currentUploadData") was overwritten
+ * when several dialogs were opened at once (e.g. several selected messages),
+ * so all dialogs showed the attachments of the last message.
+ */
+async function openDialogWithData(page, message, attachments, width, height) {
+  await removeDialogData(24 * 60 * 60 * 1000);
+  const key = `${DIALOG_DATA_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await browser.storage.local.set({
+    [key]: {
+      message: {
+        id: message.id,
+        subject: message.subject,
+        author: message.author,
+        date: message.date
+      },
+      attachments: attachments.map(att => ({
+        name: att.name,
+        partName: att.partName,
+        size: att.size,
+        contentType: att.contentType
+      }))
+    }
+  });
+  await browser.windows.create({
+    url: browser.runtime.getURL(`${page}?key=${encodeURIComponent(key)}`),
+    type: "popup",
+    width,
+    height
+  });
+}
+
+/**
+ * Remove dialog data (and the keys used by older versions). The dialogs keep
+ * their data so that a reload works; it is removed here once it is older
+ * than maxAge, and completely on startup.
+ */
+async function removeDialogData(maxAge = 0) {
+  const all = await browser.storage.local.get(null);
+  const now = Date.now();
+  const stale = Object.keys(all).filter(key => {
+    if (key === 'quickUploadData' || key === 'currentUploadData') return true;
+    if (!key.startsWith(DIALOG_DATA_PREFIX)) return false;
+    const created = parseInt(key.slice(DIALOG_DATA_PREFIX.length), 10);
+    return !(created > 0) || now - created >= maxAge;
+  });
+  if (stale.length > 0) {
+    await browser.storage.local.remove(stale);
+  }
+}
+
+browser.runtime.onStartup.addListener(() => removeDialogData(0));
+
 async function openAttachmentSelectionDialog(message, pdfAttachments) {
   try {
-    // Store data for the dialog to access
-    await browser.storage.local.set({
-      quickUploadData: {
-        message: {
-          id: message.id,
-          subject: message.subject,
-          author: message.author,
-          date: message.date
-        },
-        attachments: pdfAttachments.map(att => ({
-          name: att.name,
-          partName: att.partName,
-          size: att.size
-        }))
-      }
-    });
-
-    // Open the selection dialog
-    const dialogUrl = browser.runtime.getURL("select-attachments.html");
-    browser.windows.create({
-      url: dialogUrl,
-      type: "popup",
-      width: 500,
-      height: 600
-    });
+    await openDialogWithData("select-attachments.html", message, pdfAttachments, 500, 600);
   } catch (error) {
     console.error("Error opening attachment selection dialog:", error);
     showNotification("Error opening attachment selection dialog", "error");
@@ -170,34 +274,8 @@ async function openAttachmentSelectionDialog(message, pdfAttachments) {
 }
 
 async function openAdvancedUploadDialog(message, pdfAttachments) {
-  // Create a new window/tab for the upload dialog
-  const dialogUrl = browser.runtime.getURL("upload-dialog.html");
-
   try {
-    // Store data for the dialog to access
-    await browser.storage.local.set({
-      currentUploadData: {
-        message: {
-          id: message.id,
-          subject: message.subject,
-          author: message.author,
-          date: message.date
-        },
-        attachments: pdfAttachments.map(att => ({
-          name: att.name,
-          partName: att.partName,
-          size: att.size
-        }))
-      }
-    });
-
-    // Open the dialog
-    browser.windows.create({
-      url: dialogUrl,
-      type: "popup",
-      width: 550,
-      height: 700
-    });
+    await openDialogWithData("upload-dialog.html", message, pdfAttachments, 550, 700);
   } catch (error) {
     console.error("Error opening dialog:", error);
     showNotification("Error opening upload dialog", "error");
@@ -205,6 +283,8 @@ async function openAdvancedUploadDialog(message, pdfAttachments) {
 }
 
 async function uploadPdfToPaperless(message, attachment, options = {}) {
+  // Declared outside try so the error notification replaces "Uploading..."
+  const notificationId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   try {
     const config = await getPaperlessConfig();
     if (!config.url || !config.token) {
@@ -213,7 +293,9 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
     }
 
     const uploadMode = options.mode || 'quick';
-    showNotification(`Uploading ${attachment.name} to Paperless-ngx...`, "info");
+    if (!options.silent) {
+      showNotification(`Uploading ${attachment.name} to Paperless-ngx...`, "info", notificationId);
+    }
 
     // Get attachment data
     const attachmentData = await browser.messages.getAttachmentFile(
@@ -233,38 +315,38 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
       let defaultTagIds = [];
       if (config.defaultTags.length > 0) {
         try {
-          const tagsResponse = await fetch(`${config.url}/api/tags/`, {
-            headers: { 'Authorization': `Token ${config.token}` }
-          });
-          if (tagsResponse.ok) {
-            const tagsData = await tagsResponse.json();
-            const allTags = tagsData.results || [];
-            defaultTagIds = config.defaultTags
-              .map(name => {
-                const found = allTags.find(t => t.name === name);
-                return found ? found.id : undefined;
-              })
-              .filter(id => id !== undefined);
-          }
+          const allTags = await fetchAllResults('/api/tags/');
+          defaultTagIds = config.defaultTags
+            .map(name => {
+              const found = allTags.find(t => t.name === name);
+              return found ? found.id : undefined;
+            })
+            .filter(id => id !== undefined);
         } catch (err) {
           console.error("Failed to fetch tags for default tag resolution:", err);
         }
       }
 
       metadata = {
-        title: attachment.name.replace(/\.pdf$/i, ''), // Remove .pdf extension
+        title: stripFileExtension(attachment.name),
         tags: defaultTagIds,
       };
     } else if (uploadMode === 'advanced') {
       // Use provided options for advanced upload
       metadata = {
-        title: options.title || attachment.name.replace(/\.pdf$/i, ''),
+        title: options.title || stripFileExtension(attachment.name),
         correspondent: options.correspondent,
         document_type: options.document_type,
         tags: options.tags || [],
         created: options.created,
-        source: options.source || 'Thunderbird Email',
       };
+    }
+
+    // Paperless-ngx rejects titles longer than 128 characters
+    // (counted in code points, so emoji are not cut in half)
+    const titleChars = Array.from(metadata.title || '');
+    if (titleChars.length > 128) {
+      metadata.title = titleChars.slice(0, 127).join('') + '…';
     }
 
     // Add metadata to form data (only if values exist)
@@ -288,182 +370,148 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
     });
 
     if (response.ok) {
-      const result = await response.json();
-      showNotification(`✅ Successfully uploaded ${attachment.name} to Paperless-ngx`, "success");
-      console.log("Upload successful:", result);
-
-      // Return success data for dialog callback
-      return { success: true, result };
+      // post_document only queues the file and returns the consumption task
+      // id. Whether Paperless accepts the document (duplicate, unsupported
+      // type, OCR error, ...) is only known once the task has finished.
+      const taskId = await response.json();
+      if (!options.silent) {
+        showNotification(`⏳ ${attachment.name} sent, Paperless-ngx is processing it...`, "info", notificationId);
+      }
+      trackConsumptionTask(config, taskId, attachment.name, notificationId, !options.silent);
+      return { success: true, result: taskId };
     } else {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      throw new Error(await formatApiError(response));
     }
 
   } catch (error) {
     console.error("Error uploading to Paperless-ngx:", error);
-    showNotification(`❌ Failed to upload ${attachment.name}: ${error.message}`, "error");
+    showNotification(`❌ Failed to upload ${attachment.name}: ${error.message}`, "error", notificationId);
     return { success: false, error: error.message };
   }
 }
 
-// Handle messages from the upload dialog
-browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.action === "quickUploadFromDisplay") {
-    await handleQuickUploadFromDisplay(message.messageId);
-    sendResponse({ success: true });
-    return true;
-  }
+/**
+ * Poll /api/tasks/ until the consumption task has finished and report the
+ * real result. Failures are always reported, successes only if notifySuccess.
+ * Note: if Thunderbird suspends the background page in the meantime, the
+ * polling simply stops; the upload itself is not affected.
+ */
+async function trackConsumptionTask(config, taskId, fileName, notificationId, notifySuccess) {
+  if (typeof taskId !== 'string' || !taskId) return;
 
-  if (message.action === "advancedUploadFromDisplay") {
-    await handleAdvancedUploadFromDisplay(message.messageId);
-    sendResponse({ success: true });
-    return true;
-  }
-
-  if (message.action === "quickUploadSelected") {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let delay = 1000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay = Math.min(delay * 1.5, 10000);
     try {
-      const { messageData, selectedAttachments } = message;
+      const response = await fetch(
+        `${config.url}/api/tasks/?task_id=${encodeURIComponent(taskId)}`,
+        { headers: { 'Authorization': `Token ${config.token}` } });
+      if (!response.ok) {
+        // e.g. token without permission to view tasks
+        reportUnknownTaskState(fileName, notificationId, notifySuccess);
+        return;
+      }
+      const data = await response.json();
+      const task = (Array.isArray(data) ? data : data.results || [])[0];
+      if (!task) continue;
 
-      let successCount = 0;
-      let errorCount = 0;
-
-      // Upload each selected attachment
-      for (const attachment of selectedAttachments) {
-        try {
-          const result = await uploadPdfToPaperless(
-            messageData,
-            attachment,
-            { mode: 'quick' }
-          );
-
-          if (result.success) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (error) {
-          errorCount++;
-          console.error(`Error uploading ${attachment.name}:`, error);
+      if (task.status === 'SUCCESS') {
+        if (notifySuccess) {
+          const docInfo = task.related_document ? ` (document #${task.related_document})` : '';
+          showNotification(`✅ ${fileName} added to Paperless-ngx${docInfo}`, "success", notificationId);
         }
+        return;
       }
-
-      // Show summary notification
-      if (successCount > 0 && errorCount === 0) {
-        showNotification(`✅ Successfully uploaded ${successCount} document(s) to Paperless-ngx`, "success");
-      } else if (successCount > 0) {
-        showNotification(`⚠️ Uploaded ${successCount} document(s), ${errorCount} failed`, "info");
-      } else {
-        showNotification(`❌ Failed to upload all documents`, "error");
-      }
-
-      sendResponse({ success: true, successCount, errorCount });
-    } catch (error) {
-      console.error("Error in quickUploadSelected:", error);
-      sendResponse({ success: false, error: error.message });
-    }
-    return true; // Keep the message channel open for async response
-  }
-
-  if (message.action === "uploadWithOptions") {
-    console.log('📤 Background: Received uploadWithOptions message');
-
-    (async () => {
-      try {
-        const { messageData, attachmentData, uploadOptions } = message;
-        console.log('📤 Background: Processing upload for:', attachmentData.name);
-
-        // Reconstruct message and attachment objects
-        const messageObj = messageData;
-        const attachmentObj = attachmentData;
-
-        const result = await uploadPdfToPaperless(
-          messageObj,
-          attachmentObj,
-          { mode: 'advanced', ...uploadOptions }
-        );
-
-        console.log('📋 Background: Upload result for', attachmentData.name, ':', result);
-        console.log('📋 Background: About to send response:', JSON.stringify(result));
-
-        // Ensure we always send a valid response
-        if (result && typeof result === 'object' && result.hasOwnProperty('success')) {
-          console.log('📋 Background: Sending valid result');
-          sendResponse(result);
-        } else {
-          console.error('❌ Background: Invalid result, sending error response:', result);
-          sendResponse({ success: false, error: "Invalid response from upload function" });
-        }
-      } catch (error) {
-        console.error("❌ Background: Error in upload with options:", error);
-        sendResponse({ success: false, error: error.message });
-      }
-    })();
-
-    return true; // Keep the message channel open for async response
-  }
-
-  if (message.action === "getCorrespondents") {
-    try {
-      const config = await getPaperlessConfig();
-      const response = await fetch(`${config.url}/api/correspondents/`, {
-        headers: { 'Authorization': `Token ${config.token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        sendResponse({ success: true, correspondents: data.results });
-      } else {
-        sendResponse({ success: false, error: `HTTP ${response.status}` });
+      if (task.status === 'FAILURE' || task.status === 'REVOKED') {
+        showNotification(`❌ Paperless-ngx could not import ${fileName}: ${task.result || task.status}`,
+          "error", notificationId);
+        return;
       }
     } catch (error) {
-      sendResponse({ success: false, error: error.message });
+      console.error('Error polling consumption task:', error);
+      reportUnknownTaskState(fileName, notificationId, notifySuccess);
+      return;
     }
-    return true;
   }
-
-  if (message.action === "getDocumentTypes") {
-    try {
-      const config = await getPaperlessConfig();
-      const response = await fetch(`${config.url}/api/document_types/`, {
-        headers: { 'Authorization': `Token ${config.token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        sendResponse({ success: true, document_types: data.results });
-      } else {
-        sendResponse({ success: false, error: `HTTP ${response.status}` });
-      }
-    } catch (error) {
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
+  if (notifySuccess) {
+    showNotification(`⏳ ${fileName} is still being processed, please check Paperless-ngx`, "info", notificationId);
   }
-
-  if (message.action === "getTags") {
-    try {
-      const config = await getPaperlessConfig();
-      const response = await fetch(`${config.url}/api/tags/`, {
-        headers: { 'Authorization': `Token ${config.token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        sendResponse({ success: true, tags: data.results });
-      } else {
-        sendResponse({ success: false, error: `HTTP ${response.status}` });
-      }
-    } catch (error) {
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
-  }
-});
-
-function extractCorrespondentFromEmail(emailString) {
-  const match = emailString.match(/^(.+?)\s*<.+>$/);
-  return match ? match[1].trim() : emailString.split('@')[0];
 }
+
+function reportUnknownTaskState(fileName, notificationId, notifySuccess) {
+  if (notifySuccess) {
+    showNotification(`📤 ${fileName} was sent to Paperless-ngx (import status unknown)`, "info", notificationId);
+  }
+}
+
+// Handle messages from the extension pages.
+// The listener is intentionally *not* async: an async listener returns a
+// Promise for every message, including messages that are only meant for
+// other extension pages (e.g. "correspondentCreated" sent from the
+// creation dialog to the upload dialog). Returning undefined for unknown
+// actions lets those messages pass through untouched.
+const messageHandlers = {
+  async quickUploadFromDisplay(message) {
+    await handleQuickUploadFromDisplay(message.messageId);
+    return { success: true };
+  },
+
+  async advancedUploadFromDisplay(message) {
+    await handleAdvancedUploadFromDisplay(message.messageId);
+    return { success: true };
+  },
+
+  async quickUploadSelected(message) {
+    const { messageData, selectedAttachments } = message;
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const attachment of selectedAttachments) {
+      // silent: one summary notification instead of two per file
+      const result = await uploadPdfToPaperless(messageData, attachment, { mode: 'quick', silent: true });
+      if (result.success) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    }
+
+    if (successCount > 0 && errorCount === 0) {
+      showNotification(`⏳ Sent ${successCount} document(s) to Paperless-ngx, failures will be reported`, "success");
+    } else if (successCount > 0) {
+      showNotification(`⚠️ Sent ${successCount} document(s), ${errorCount} failed`, "info");
+    } else {
+      showNotification(`❌ Failed to upload all documents`, "error");
+    }
+    return { success: true, successCount, errorCount };
+  },
+
+  async uploadWithOptions(message) {
+    const { messageData, attachmentData, uploadOptions } = message;
+    const result = await uploadPdfToPaperless(
+      messageData,
+      attachmentData,
+      { mode: 'advanced', ...uploadOptions }
+    );
+    if (result && typeof result === 'object' && 'success' in result) {
+      return result;
+    }
+    return { success: false, error: "Invalid response from upload function" };
+  },
+};
+
+browser.runtime.onMessage.addListener((message) => {
+  const handler = messageHandlers[message && message.action];
+  if (!handler) {
+    return undefined;
+  }
+  return handler(message).catch(error => {
+    console.error(`Error handling "${message.action}":`, error);
+    return { success: false, error: error.message };
+  });
+});
 
 async function getPaperlessConfig() {
   const result = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken', 'defaultTags']);
@@ -474,24 +522,32 @@ async function getPaperlessConfig() {
   };
 }
 
-function showNotification(message, type = "info") {
+function showNotification(message, type = "info", notificationId = undefined) {
   // const iconUrl = type === "error" ? "icons/error.png" :
   //   type === "success" ? "icons/success.png" : "icons/icon-32.png";
   const iconUrl = "icons/icon-32.png";
 
-  browser.notifications.create({
+  const options = {
     type: "basic",
     iconUrl: iconUrl,
-    title: "📄 Paperless PDF Uploader",
+    title: "📄 Paperless Uploader",
     message: message
-  });
+  };
+  // Same id = the notification is replaced instead of stacked
+  if (notificationId) {
+    browser.notifications.create(notificationId, options);
+  } else {
+    browser.notifications.create(options);
+  }
 }
 
 // Handle quick upload from message display popup
 async function handleQuickUploadFromDisplay(messageId) {
   try {
     const message = await browser.messages.get(messageId);
-    await processQuickPdfUpload(message);
+    if (!(await processQuickPdfUpload(message))) {
+      showNotification("No supported attachments found in displayed message", "info");
+    }
   } catch (error) {
     console.error("Error handling quick upload from display:", error);
     showNotification("Error processing quick upload", "error");
@@ -503,21 +559,13 @@ async function handleAdvancedUploadFromDisplay(messageId) {
   try {
     const message = await browser.messages.get(messageId);
 
-    // Get PDF attachments
-    const attachments = await browser.messages.listAttachments(message.id);
-    const pdfAttachments = attachments.filter(attachment =>
-      attachment.contentType === "application/pdf" ||
-      attachment.name.toLowerCase().endsWith('.pdf')
-    );
+    // Get uploadable attachments
+    const pdfAttachments = await getUploadableAttachments(message.id);
 
     if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in displayed message", "info");
+      showNotification("No supported attachments found in displayed message", "info");
       return;
     }
-
-    // Store current data for the dialog
-    currentMessage = message;
-    currentPdfAttachments = pdfAttachments;
 
     // Open the advanced upload dialog
     await openAdvancedUploadDialog(message, pdfAttachments);

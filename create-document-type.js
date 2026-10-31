@@ -10,9 +10,9 @@ function setupEventListeners() {
   document.getElementById('documentTypeForm').addEventListener('submit', handleCreateDocumentType);
 
   // Cancel button
-  document.getElementById('cancelBtn').addEventListener('click', () => {
+  document.getElementById('cancelBtn').addEventListener('click', async () => {
     // Send cancel message to parent
-    sendMessageToParent('documentTypeCreated', false);
+    await sendMessageToParent('documentTypeCreated', false);
     window.close();
   });
 }
@@ -56,14 +56,13 @@ async function handleCreateDocumentType(event) {
       const newDocumentType = await response.json();
       showSuccess(`Created document type "${name}" successfully!`);
 
-      // Send success message to parent window
-      sendMessageToParent('documentTypeCreated', true, { documentType: newDocumentType });
+      // Notify the upload dialog so it can refresh its list
+      await sendMessageToParent('documentTypeCreated', true, { documentType: newDocumentType });
 
       // Close window after delay
       closeWindowWithDelay(1500);
     } else {
-      const errorData = await response.json();
-      showError(`Failed to create document type: ${errorData.detail || response.statusText}`);
+      showError(`Failed to create document type: ${await formatApiError(response)}`);
     }
 
   } catch (error) {

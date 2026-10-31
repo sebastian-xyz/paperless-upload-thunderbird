@@ -8,8 +8,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 async function loadAttachmentData() {
   try {
-    const result = await browser.storage.local.get('quickUploadData');
-    const uploadData = result.quickUploadData;
+    const uploadData = await takeDialogData();
 
     if (!uploadData) {
       console.error("No upload data found");

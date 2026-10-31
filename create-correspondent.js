@@ -10,9 +10,9 @@ function setupEventListeners() {
   document.getElementById('correspondentForm').addEventListener('submit', handleCreateCorrespondent);
 
   // Cancel button
-  document.getElementById('cancelBtn').addEventListener('click', () => {
+  document.getElementById('cancelBtn').addEventListener('click', async () => {
     // Send cancel message to parent
-    sendMessageToParent('correspondentCreated', false);
+    await sendMessageToParent('correspondentCreated', false);
     window.close();
   });
 }
@@ -56,14 +56,13 @@ async function handleCreateCorrespondent(event) {
       const newCorrespondent = await response.json();
       showSuccess(`Created correspondent "${name}" successfully!`);
 
-      // Send success message to parent window
-      sendMessageToParent('correspondentCreated', true, { correspondent: newCorrespondent });
+      // Notify the upload dialog so it can refresh its list
+      await sendMessageToParent('correspondentCreated', true, { correspondent: newCorrespondent });
 
       // Close window after delay
       closeWindowWithDelay(1500);
     } else {
-      const errorData = await response.json();
-      showError(`Failed to create correspondent: ${errorData.detail || response.statusText}`);
+      showError(`Failed to create correspondent: ${await formatApiError(response)}`);
     }
 
   } catch (error) {

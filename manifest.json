@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Paperless-ngx Uploader",
-  "version": "1.2.0",
-  "description": "Upload PDF attachments directly to Paperless-ngx from Thunderbird",
+  "version": "2.0.0",
+  "description": "Upload PDF (and other) attachments directly to Paperless-ngx from Thunderbird",
   "browser_specific_settings": {
     "gecko": {
       "id": "@paperless-uploader.sebastian-xyz",
@@ -20,6 +20,7 @@
   ],
   "background": {
     "scripts": [
+      "utils.js",
       "background.js"
     ]
   },

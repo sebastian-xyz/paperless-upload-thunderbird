@@ -46,10 +46,10 @@ jobs:
             message-display-popup.js \
             select-attachments.html \
             select-attachments.js \
-            fuse.min.js \
+            search.js \
             utils.js \
             icons/ \
-            -x "*.git*" "*.github*" "README.md" "LICENSE" "assets/" "package.json"
+            -x "*.git*" "*.github*" "README.md" "LICENSE" "assets/"
 
           # Verify the XPI was created
           ls -la *.xpi
