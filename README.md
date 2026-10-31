@@ -72,11 +72,12 @@ Available in the [Thunderbird Add-On Gallery](https://addons.thunderbird.net/add
 
 ## Features
 
-- 📄 Upload PDF attachments from any email directly to paperless-ngx
-- 🔒 Secure, local processing—no third-party servers
-- 🛠️ Simple configuration for your paperless-ngx instance
-- 🔔 Optional notifications on upload success or failure
-- 🧩 Seamless integration with Thunderbird’s UI
+- Upload PDF attachments from any email directly to paperless-ngx
+- Optionally also images, plain text and Office documents (Office/.eml require Tika on the server)
+- Set title, correspondent, document type, tags and date before uploading, or create new correspondents and document types on the fly
+- Simple configuration for your paperless-ngx instance via API Key
+- Get notifications on upload success or failure
+- Seamless integration with Thunderbird’s UI
 
 ---
 
@@ -106,6 +107,8 @@ Go to **Add-ons and Themes** > **Extensions** > **Paperless Uploader** > **Prefe
 
 - **Server URL**: The base URL of your paperless-ngx instance
 - **API Key**: Your personal API key for authentication
+- **Default Tags** (optional): Comma-separated tag names, applied on quick upload and preselected in the upload dialog. The tags must already exist in paperless-ngx.
+- **Also offer images, text and Office documents** (optional): By default only PDFs are offered. Office documents and `.eml` files require the Tika/Gotenberg integration of paperless-ngx.
 
 ---
 
